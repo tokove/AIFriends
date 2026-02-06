@@ -32,8 +32,8 @@ class UpdateProfileView(APIView):
                 })
             if photo:
                 remove_old_photo(user_profile.photo)
+                user_profile.photo = photo
 
-            user_profile.photo = photo
             user_profile.profile = profile
             user_profile.update_time = now()
             user_profile.save()

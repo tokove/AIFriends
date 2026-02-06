@@ -43,5 +43,5 @@ class RegisterView(APIView):
             import traceback
             print(traceback.format_exc())
             return Response({
-                "result": "系统异常，请稍后再试"
+                "result": "系统繁忙，请稍后再试"
             })
