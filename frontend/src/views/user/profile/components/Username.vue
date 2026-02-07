@@ -18,7 +18,7 @@ defineExpose({
    <fieldset class="fieldset">
     <label class="label text-base ">用户名</label>
     <input v-model="myUsername" type="text" class="input w-98" placeholder="用户名" />
-  </fieldset>
+   </fieldset>
  </div>
 </template>
 

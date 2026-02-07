@@ -6,10 +6,8 @@ import {useUserStore} from "@/stores/user.js";
 import {ref, useTemplateRef} from "vue";
 import {base64ToFile} from "@/js/utils/base64_to_file.js";
 import api from "@/js/http/api.js";
-import {useRouter} from "vue-router";
 
 const user = useUserStore()
-const router = useRouter()
 
 const photoRef = useTemplateRef('photo-ref')
 const usernameRef = useTemplateRef('username-ref')
@@ -59,7 +57,7 @@ async function handleUpdate() {
         <Username ref="username-ref" :username="user.username" />
         <Profile ref="profile-ref" :profile="user.profile" />
 
-        <p v-if="errorMessage" class="text-sm text-red-500">{{ errorMessage }}</p>
+        <p v-if="errorMessage" class="text-sm text-red-500 ml-6">{{ errorMessage }}</p>
         <div class="flex justify-center">
          <button @click="handleUpdate" class="btn btn-neutral w-60 mt-2">保存</button>
         </div>
