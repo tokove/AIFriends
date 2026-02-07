@@ -14,8 +14,8 @@ class UpdateCharacterView(APIView):
             character = Character.objects.get(id=character_id, author__user=request.user)
             name = request.data['name'].strip()
             profile = request.data['profile'].strip()[:100000]
-            photo = request.FILES['photo', None]
-            background_image = request.FILES['background_image', None]
+            photo = request.FILES.get('photo', None)
+            background_image = request.FILES.get('background_image', None)
             if not name:
                 return Response({
                     'result': '名字不能为空'
@@ -25,7 +25,7 @@ class UpdateCharacterView(APIView):
                     'result': '角色介绍不能为空'
                 })
             if photo:
-                remove_old_photo(photo)
+                remove_old_photo(character.photo)
                 character.photo = photo
             if background_image:
                 remove_old_photo(background_image)
