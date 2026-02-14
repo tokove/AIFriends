@@ -21,6 +21,9 @@ const user = useUserStore()
             <MenuIcon />
           </label>
           <div class="px-2 font-bold text-xl">Tokove</div>
+<!--          <div class="w-35">-->
+<!--            <img src="/images/tokove_log.png" alt="">-->
+<!--          </div>-->
         </div>
         <div class="navbar-center w-4/5 max-w-180 flex justify-center">
           <div class="join w-4/5 flex justify-center">
