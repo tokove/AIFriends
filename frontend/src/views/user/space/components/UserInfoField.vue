@@ -3,13 +3,13 @@ defineProps(['userProfile'])
 </script>
 
 <template>
-  <div class="flex items-center mt-12 gap-8">
+  <div v-if="userProfile" class="flex items-center mt-5 gap-8">
     <div class="avatar">
-      <div v-if="userProfile?.photo" class="w-44 rounded-full">
+      <div class="w-44 rounded-full">
         <img :src="userProfile.photo" alt="">
       </div>
     </div>
-    <div class="flex flex-col justify-center w-64 h-44">
+    <div class="flex flex-col justify-center w-64 h-44 mt-10">
         <div class="text-2xl font-bold line-clamp-1 break-all">{{ userProfile.username }}</div>
         <div class="text-sm mt-4 text-gray-500">tokove号：{{ userProfile.user_id }}</div>
         <div class="text-sm line-clamp-4 break-all h-20 mt-4">个人简介：{{ userProfile.profile }}</div>
