@@ -29,14 +29,14 @@ class GetFriendListView(APIView):
                         'author': {
                             'user_id': author.id,
                             'username': author.user.username,
-                            'photo': author.photo
+                            'photo': author.photo.url
                         }
                     }
                 })
-                return Response({
-                    'result': 'success',
-                    'friends': friends
-                })
+            return Response({
+                'result': 'success',
+                'friends': friends
+            })
         except:
             return Response({
                 'result': '系统繁忙，请稍后再试'
