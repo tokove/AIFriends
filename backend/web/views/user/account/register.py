@@ -40,8 +40,6 @@ class RegisterView(APIView):
             )
             return response
         except:
-            import traceback
-            print(traceback.format_exc())
             return Response({
                 "result": "系统繁忙，请稍后再试"
             })

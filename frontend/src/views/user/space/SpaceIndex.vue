@@ -1,7 +1,7 @@
 <script setup>
 import {useRoute} from "vue-router";
 import UserInfoField from "@/views/user/space/components/UserInfoField.vue";
-import {nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef} from "vue";
+import {nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch} from "vue";
 import api from "@/js/http/api.js";
 import Character from "@/components/character/Character.vue";
 
@@ -22,6 +22,18 @@ function checkSentinelVisible() {  // 判断哨兵是否能被看到
 function removeCharacter(characterId) {
   characters.value = characters.value.filter(c => c.id !== characterId)
 }
+
+function reset() {
+  userProfile.value = null
+  characters.value = []
+  isLoading.value = false
+  hasCharacters.value = true
+  loadMore()
+}
+
+watch(() => route.params.user_id, () => {
+  reset()
+})
 
 async function loadMore() {
   if (isLoading.value || !hasCharacters.value) return
