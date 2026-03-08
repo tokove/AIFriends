@@ -1,12 +1,60 @@
 <script setup>
-
 import MicIcon from "@/components/character/icons/MicIcon.vue";
 import SendIcon from "@/components/character/icons/SendIcon.vue";
+import {ref, useTemplateRef} from "vue";
+import streamApi from "@/js/http/streamApi.js";
+
+const props = defineProps(['friendId'])
+const inputRef = useTemplateRef('input-ref')
+const message = ref('')
+let isProcessing = false
+
+function focus() {
+  inputRef.value.focus()
+}
+
+async function handleSend() {
+  if (isProcessing) return
+  isProcessing = true
+
+  const content = message.value
+  if (!content) return
+  message.value = ""
+
+  try {
+    await streamApi('/api/friend/message/chat/', {
+      body: {
+        friend_id: props.friendId,
+        message: content,
+      },
+      onmessage(data, isDone) {
+        if (isDone) {
+          isProcessing = false
+        } else if (data.content) {
+          console.log(data.content)
+        }
+      },
+      onerror(err) {
+        isProcessing = false
+        console.log(err)
+      }
+    })
+  } catch (err) {
+    isProcessing = false
+    console.log(err)
+  }
+}
+
+defineExpose({
+  focus,
+})
 </script>
 
 <template>
-  <div class="absolute w-92 h-12 left-2 right-2 bottom-4 flex items-center">
+  <form @submit.prevent="handleSend" class="absolute w-92 h-12 left-2 right-2 bottom-4 flex items-center">
     <input
+        ref="input-ref"
+        v-model="message"
         class="input bg-black/30 backdrop-blur-sm text-white text-base w-full h-full rounded-2xl pr-20"
         type="text"
         placeholder="心里的话，尽情说"
@@ -14,10 +62,10 @@ import SendIcon from "@/components/character/icons/SendIcon.vue";
     <div class="absolute right-10 w-8 h-8 flex justify-center items-center cursor-pointer">
       <MicIcon />
     </div>
-    <div class="absolute right-2 w-8 h-8 flex justify-center items-center cursor-pointer">
+    <div @click="handleSend" class="absolute right-2 w-8 h-8 flex justify-center items-center cursor-pointer">
       <SendIcon />
     </div>
-  </div>
+  </form>
 </template>
 
 <style scoped>
