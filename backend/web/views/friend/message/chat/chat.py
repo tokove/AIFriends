@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from web.models.friend import Friend
+from web.models.friend import Friend, Message
 from rest_framework.renderers import BaseRenderer
 from web.views.friend.message.chat.graph import ChatGraph
 
@@ -43,14 +43,30 @@ class MessageChatView(APIView):
         # 实现流式加载
         def event_stream():
             final_usage = {}
+            final_output = ""
             for msg, metadata in app.stream(inputs, stream_mode="messages"):
                 if isinstance(msg, BaseMessageChunk):
                     if msg.content:
+                        final_output += msg.content
                         yield f"data: {json.dumps({'content': msg.content}, ensure_ascii=False)}\n\n"
                     if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
                         final_usage = msg.usage_metadata
             yield "data: [DONE]\n\n"
-            print(final_usage)
+            input_tokens = final_usage.get("input_tokens", 0)
+            output_tokens = final_usage.get("output_tokens", 0)
+            total_tokens = final_usage.get("total_tokens", 0)
+            Message.objects.create(
+                friend=friend,
+                user_message=message[:500],
+                input=json.dumps(
+                    [m.model_dump() for m in inputs["messages"]],
+                    ensure_ascii=False,
+                )[:10000],
+                output=final_output[:500],
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+            )
 
         response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
         response['Cache-Control'] = 'no-cache'

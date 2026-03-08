@@ -34,7 +34,6 @@ async function handleRemoveFriend() {
       emit('remove', props.friendId)
     }
   } catch (err) {
-    console.log(err)
   }
 }
 

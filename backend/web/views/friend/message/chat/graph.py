@@ -6,14 +6,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.constants import START, END
 from langgraph.graph import add_messages, StateGraph
 
-
-
-
 class ChatGraph:
     @staticmethod
     def create_app():
         llm = ChatOpenAI(
-            model="qwen3.5-plus",
+            model="deepseek-v3.2",
             openai_api_key=os.getenv("API_KEY"),
             openai_api_base=os.getenv("API_BASE"),
             streaming=True, # 流式输出
