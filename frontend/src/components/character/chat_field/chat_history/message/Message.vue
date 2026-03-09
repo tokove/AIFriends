@@ -7,7 +7,7 @@ const user = useUserStore()
 
 <template>
   <div v-if="message.content">
-    <div v-if="message.role === 'ai'" class="chat chat-start ml-1">
+    <div v-if="message.role === 'ai'" class="chat chat-start">
       <div class="chat-image avatar">
         <div class="w-10 rounded-full">
           <img :src="character.photo"  alt=""/>
@@ -15,7 +15,7 @@ const user = useUserStore()
       </div>
       <div class="chat-bubble whitespace-pre-wrap">{{ message.content }}</div>
     </div>
-    <div v-else class="chat chat-end mr-1">
+    <div v-else class="chat chat-end">
       <div class="chat-image avatar">
         <div class="w-10 rounded-full">
           <img :src="user.photo" alt="" />
