@@ -40,12 +40,10 @@ async function handleSend() {
       },
       onerror(err) {
         isProcessing = false
-        console.log(err)
       }
     })
   } catch (err) {
     isProcessing = false
-    console.log(err)
   }
 }
 

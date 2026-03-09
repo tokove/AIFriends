@@ -36,7 +36,6 @@ async function loadMore() {
       newMessages = data.messages
     }
   } catch (err) {
-    console.log(err)
   } finally {
     isLoading = false
     if (newMessages.length === 0) {
