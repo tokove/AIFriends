@@ -8,7 +8,7 @@ import ChatField from "@/components/character/chat_field/ChatField.vue";
 import {useRouter} from "vue-router";
 
 const props = defineProps(['character', 'canEdit', 'canRemoveFriend', 'friendId'])
-const emit = defineEmits(['removeCharacter'])
+const emit = defineEmits(['remove'])
 const isHover = ref(false)
 const user = useUserStore()
 const router = useRouter()
