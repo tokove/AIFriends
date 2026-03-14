@@ -17,6 +17,11 @@ async function showModal() {
   inputRef.value.focus()
 }
 
+function handleClose() {
+  modalRef.value.close()
+  inputRef.value.close()
+}
+
 function handlePushBackMessage(msg) {
   history.value.push(msg)
   chatHistoryRef.value.scrollToBottom()
@@ -52,7 +57,7 @@ defineExpose({
 <template>
   <dialog ref="modal-ref" class="modal">
     <div class="modal-box w-96 h-160" :style="modalStyle">
-      <button @click="modalRef.close()" class="btn btn-sm btn-circle btn-ghost bg-transparent absolute right-3 top-3">✕</button>
+      <button @click="handleClose" class="btn btn-sm btn-circle btn-ghost bg-transparent absolute right-3 top-3">✕</button>
       <ChatHistory
           ref="chat-history-ref"
           v-if="friend"
