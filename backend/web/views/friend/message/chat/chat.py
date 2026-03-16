@@ -49,8 +49,8 @@ class MessageChatView(APIView):
     permission_classes = [IsAuthenticated]
     renderer_classes = [SSERenderer]
     def post(self, request):
-        friend_id = request.data.get('friend_id')
-        message = request.data.get('message').strip()
+        friend_id = request.data['friend_id']
+        message = request.data['message'].strip()
         if not message:
             return Response({
                 "result": "消息不能为空"
@@ -79,6 +79,7 @@ class MessageChatView(APIView):
             content_type="text/event-stream"
         )
         response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
         return response
 
     async def tts_sender(self, app, inputs, mq, ws, task_id):
@@ -148,7 +149,7 @@ class MessageChatView(APIView):
                         "voice": "longanyang",  # 音色
                         "format": "mp3",  # 音频格式
                         "sample_rate": 22050,  # 采样率
-                        "volume": 50,  # 音量
+                        "volume": 40,  # 音量
                         "rate": 1.3,  # 语速
                         "pitch": 1  # 音调
                     },
@@ -164,7 +165,7 @@ class MessageChatView(APIView):
                 self.tts_receiver(mq, ws),
             )
 
-    def worker(self, app, inputs, mq):
+    def work(self, app, inputs, mq):
         try:
             asyncio.run(self.run_tts_tasks(app, inputs, mq))
         finally:
@@ -172,7 +173,7 @@ class MessageChatView(APIView):
 
     def event_stream(self, app, inputs, friend, message):
         mq = Queue()
-        thread = threading.Thread(target=self.worker, args=(app, inputs, mq))
+        thread = threading.Thread(target=self.work, args=(app, inputs, mq))
         thread.start()
 
         final_usage = {}

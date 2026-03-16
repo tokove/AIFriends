@@ -10,24 +10,14 @@ let vadInstance = null;
 
 const startRecording = async () => {
   const baseUrl = "http://localhost:5173/vad/";
-  console.log("🔍 尝试加载 VAD 模型路径:", baseUrl);
   try {
     vadInstance = await MicVAD.new({
       baseAssetPath: baseUrl,
       onSpeechStart: () => {
-        console.log("🟢 检测到说话开始");
         isSpeaking.value = true;
         emit("stop")
       },
       onSpeechEnd: (audio) => {
-        console.log("🔴 检测到说话结束，原始音频长度:", audio.length);
-
-        if (audio.length < 8000) { // 小于 0.5 秒
-          console.warn("⚠️ 音频太短 (<0.5s)，已丢弃");
-          isSpeaking.value = false;
-          return;
-        }
-
         isSpeaking.value = false;
         const pcm16 = float32ToInt16(audio);
         sendToBackend(pcm16);
@@ -43,10 +33,7 @@ const startRecording = async () => {
     });
 
     await vadInstance.start();
-    console.log("✅ VAD 启动成功");await vadInstance.start();
-
   } catch (e) {
-    console.error("VAD 初始化失败:", e);
   }
 };
 // 将 Float32 转 PCM 16-bit
@@ -63,17 +50,14 @@ const sendToBackend = async (arrayBuffer) => {
   const blob = new Blob([arrayBuffer], { type: "audio/pcm" })
   const formData = new FormData()
   formData.append("audio", blob, "voice.pcm")
-   console.log("🚀 正在发送请求到后端...");
   try {
     const res = await api.post("/api/friend/message/asr/asr/", formData)
     const data = res.data
-    console.log("📥 后端返回原始数据:", res.data); // 这里最关键！
-    console.log(data)
     if (data.result === "success") {
       emit("send", null, data.text)
     }
   } catch (err) {
-    console.log(err)
+    console.error(err)
   }
 };
 
