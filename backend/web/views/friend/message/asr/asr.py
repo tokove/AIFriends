@@ -69,7 +69,7 @@ class ASRView(APIView):
                     "action": "run-task"
                 },
                 "payload": {
-                    "model": "gummy-realtime-v1",
+                    "model": "qwen3-asr-flash",
                     "parameters": {
                         "sample_rate": 16000,
                         "format": "pcm",
