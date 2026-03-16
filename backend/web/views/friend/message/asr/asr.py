@@ -17,7 +17,7 @@ class ASRView(APIView):
                 "result": "音频不存在"
             })
 
-        pcm_data = audio.read()                
+        pcm_data = audio.read()
         text = asyncio.run(self.run_asr_tasks(pcm_data))
         return Response({
             "result": "success",
@@ -90,3 +90,4 @@ class ASRView(APIView):
                 self.asr_sender(pcm_data, ws, task_id),
                 self.asr_receiver(ws),
             )
+            return text
