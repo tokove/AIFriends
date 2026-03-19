@@ -1,4 +1,5 @@
 <script setup>
+import logoSrc from '@/assets/logo.png'
 import MenuIcon from "@/components/navbar/icons/MenuIcon.vue";
 import HomePageIcon from "@/components/navbar/icons/HomePageIcon.vue";
 import FriendIcon from "@/components/navbar/icons/FriendIcon.vue";
@@ -38,10 +39,9 @@ function handleSearch() {
           <label for="my-drawer-4" aria-label="open sidebar" class="btn btn-square btn-ghost">
             <MenuIcon />
           </label>
-          <div class="px-2 font-bold text-xl">Tokove</div>
-<!--          <div class="w-35">-->
-<!--            <img src="/images/tokove_log.png" alt="">-->
-<!--          </div>-->
+          <div class="w-35">
+            <img :src="logoSrc" alt="Logo">
+          </div>
         </div>
         <div class="navbar-center w-4/5 max-w-180 flex justify-center">
           <form @submit.prevent="handleSearch" class="join w-4/5 flex justify-center">
