@@ -8,6 +8,7 @@ db:
   port: 5432
   name: "aifriends"
   sslmode: "disable"
+  time_zone: "Asia/Shanghai"
   
 log:
   level: "debug"
@@ -15,6 +16,10 @@ log:
   max_size: 200
   max_age: 30
   max_backups: 7
+
+jwt: 
+  access_exp: 7200
+  refresh_exp: 604800
 
 cors:
   allow_origins:

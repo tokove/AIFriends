@@ -1,0 +1,174 @@
+package user
+
+import (
+	"backend/pkg/constants"
+	"backend/pkg/utils"
+	"context"
+	"errors"
+	"fmt"
+	"mime/multipart"
+	"strings"
+	"unicode/utf8"
+
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+)
+
+// UserService 接口定义（业务层契约）
+type UserService interface {
+	Register(ctx context.Context, username, password string) (*User, error)
+	Login(ctx context.Context, username, password string) (*User, error)
+	GetUserInfo(ctx context.Context, userID uint) (*User, error)
+	UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*User, error)
+}
+
+type userService struct {
+	repo UserRepository
+}
+
+// NewUserRepository 构造函数
+func NewUserService(repo UserRepository) UserService {
+	return &userService{repo: repo}
+}
+
+func (s *userService) Register(ctx context.Context, username, password string) (*User, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+
+	if username == "" || password == "" {
+		return nil, errors.New("用户名和密码不能为空")
+	}
+
+	existingUser, err := s.repo.GetByUsername(ctx, username)
+	if err == nil && existingUser != nil {
+		return nil, errors.New("用户名已存在")
+	}
+
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		zap.L().Error("[user service] GetByUsername error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		zap.L().Error("[user service] bcrypt error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	user := &User{
+		Username: username,
+		Password: string(hashedPass),
+	}
+
+	if err := s.repo.Create(ctx, user); err != nil {
+		zap.L().Error("[user service] Create error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	return user, nil
+}
+
+func (s *userService) Login(ctx context.Context, username, password string) (*User, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+
+	if username == "" || password == "" {
+		return nil, errors.New("用户名和密码不能为空")
+	}
+
+	user, err := s.repo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			zap.L().Error("[user service] GetByUsername error: ", zap.Error(err))
+			return nil, errors.New("用户名或密码错误")
+		}
+		zap.L().Error("[user service] GetByUsername error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return nil, errors.New("用户名或密码错误")
+	}
+
+	return user, nil
+}
+
+func (s *userService) GetUserInfo(ctx context.Context, userID uint) (*User, error) {
+	user, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		zap.L().Error("[user service] GetUserInfo error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	if user == nil {
+		return nil, errors.New("用户不存在")
+	}
+
+	return user, nil
+}
+
+func (s *userService) UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*User, error) {
+	username = strings.TrimSpace(username)
+
+	// 1. 用户名长度校验
+	uLen := utf8.RuneCountInString(username)
+	if uLen < constants.MinUsernameLen || uLen > constants.MaxUsernameLen {
+		return nil, fmt.Errorf("用户名长度需在 %d-%d 个字符之间", constants.MinUsernameLen, constants.MaxUsernameLen)
+	}
+
+	// 2. 简介长度校验
+	pLen := utf8.RuneCountInString(profile)
+	if pLen > constants.MaxProfileLen {
+		return nil, fmt.Errorf("简介太长了，最多支持 %d 个字", constants.MaxProfileLen)
+	}
+
+	// 3. 获取用户信息
+	user, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		zap.L().Error("[user service] GetByID error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	// 4. 用户名改动查重
+	if username != user.Username {
+		userExisting, err := s.repo.GetByUsername(ctx, username)
+		if err == nil && userExisting != nil {
+			return nil, errors.New("用户名已存在")
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			zap.L().Error("[user service] GetByUsername error: ", zap.Error(err))
+			return nil, errors.New("系统繁忙，请稍后再试")
+		}
+	}
+
+	// 5. 更新基本信息
+	user.Username = username
+	user.Profile = profile
+
+	// 6. 图片处理
+	if photo != nil {
+		// RemoveFile 内部已带 default 保护逻辑
+		utils.RemoveFile(user.Photo)
+
+		path, err := utils.UploadFile(userID, photo, constants.DirUserPhoto)
+		if err != nil {
+			return nil, err
+		}
+		user.Photo = path
+	}
+
+	// 7. 写入数据库
+	if err := s.repo.Update(ctx, user); err != nil {
+		zap.L().Error("[user service] Update error: ", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	return user, nil
+}

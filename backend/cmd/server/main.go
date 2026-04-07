@@ -28,10 +28,10 @@ func main() {
 
 	// init db
 	db.InitDB(cfg)
-	// db.AutoMigrate()
+	db.AutoMigrate()
 
 	// init server
-	r := router.SetupRouter(cfg.Server.Mode)
+	r := router.SetupRouter(cfg.Server.Mode, db.DB, cfg)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

@@ -1,30 +1,46 @@
 package router
 
 import (
+	"backend/internal/config"
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
-	"net/http"
+	"backend/internal/user"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func SetupRouter(mode string) *gin.Engine {
+func SetupRouter(mode string, db *gorm.DB, cfg *config.Config) *gin.Engine {
 	if mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-
 	// 配置日志和错误恢复
 	r.Use(logger.GinLogger(), logger.GinRecovery(true))
-
 	// 跨域中间件
 	r.Use(middleware.CorsMiddleware())
+	r.Static("/api/data", "./data")
 
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "pong",
-		})
-	})
+	userRepo := user.NewUserRepository(db)
+	userSvc := user.NewUserService(userRepo)
+	userHdl := user.NewUserHandler(userSvc, &cfg.JWT)
+
+	public := r.Group("/api")
+	{
+		// user
+		public.POST("/user/account/register", userHdl.Register)
+		public.POST("/user/account/login", userHdl.Login)
+		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
+	}
+
+	protected := r.Group("/api")
+	protected.Use(middleware.AuthMiddleware(cfg))
+	{
+		// user
+		protected.POST("/user/account/logout", userHdl.Logout)
+		protected.GET("/user/account/get_user_info", userHdl.GetUserInfo)
+		protected.POST("/user/profile/update/", userHdl.UpdateProfile)
+	}
 
 	return r
 }
