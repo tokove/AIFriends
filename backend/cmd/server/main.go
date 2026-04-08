@@ -4,6 +4,7 @@ import (
 	"backend/internal/config"
 	"backend/internal/infra/db"
 	"backend/internal/infra/logger"
+	"backend/internal/infra/redis"
 	"backend/internal/router"
 	"context"
 	"fmt"
@@ -29,6 +30,9 @@ func main() {
 	// init db
 	db.InitDB(cfg)
 	db.AutoMigrate()
+
+	// init redis
+	redis.InitRedis(cfg)
 
 	// init server
 	r := router.SetupRouter(cfg.Server.Mode, db.DB, cfg)

@@ -2,10 +2,13 @@ package user
 
 import (
 	"backend/internal/config"
+	"backend/internal/infra/redis"
 	"backend/pkg/constants"
 	"backend/pkg/utils"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -93,7 +96,12 @@ func (h *userHandler) Login(c *gin.Context) {
 }
 
 func (h *userHandler) Logout(c *gin.Context) {
-	// 将 Cookie 设置为过期即可
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		redis.RDB.Set(redis.Ctx, "blacklist:"+token, "1", time.Duration(h.jwt.AccessExp)*time.Second)
+	}
+
 	c.SetCookie("refresh_token", "", -1, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"result": "success"})
 }

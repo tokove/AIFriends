@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"backend/internal/config"
+	"backend/internal/infra/redis"
 	"backend/pkg/utils"
 	"net/http"
 	"strings"
@@ -11,7 +12,7 @@ import (
 
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. 从 Authorization Header 获取 Token: "Bearer <token>"
+		// 1. 获取并校验格式
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
@@ -26,15 +27,26 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// 2. 解析解析 Access Token
-		claims, err := utils.ParseToken(parts[1], cfg.JWT.Secret)
+		tokenString := parts[1]
+
+		// 💡 核心新增：Redis 黑名单拦截
+		// 只要 Logout 调用过，这里就会拦截掉即便还没过期的 Token
+		isBlack, err := redis.RDB.Exists(redis.Ctx, "blacklist:"+tokenString).Result()
+		if err == nil && isBlack > 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{"result": "登录已失效，请重新登录"})
+			c.Abort()
+			return
+		}
+
+		// 2. 解析 Access Token
+		claims, err := utils.ParseToken(tokenString, cfg.JWT.Secret)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"result": "Token无效或已过期"})
 			c.Abort()
 			return
 		}
 
-		// 3. 将解析出的 UserID 存入 Context，方便后续 Handler 使用
+		// 3. 存入上下文
 		c.Set("user_id", claims.UserID)
 		c.Next()
 	}

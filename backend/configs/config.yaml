@@ -9,6 +9,13 @@ db:
   name: "aifriends"
   sslmode: "disable"
   time_zone: "Asia/Shanghai"
+
+redis:
+  host: "127.0.0.1"
+  port: 16379
+  password: ""
+  db: 0
+  pool_size: 100
   
 log:
   level: "debug"

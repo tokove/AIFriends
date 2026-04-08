@@ -43,12 +43,21 @@ type JwtConfig struct {
 	Secret     string
 }
 
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+	PoolSize int    `mapstructure:"pool_size"`
+}
+
 type Config struct {
 	Server ServerConfig `mapstructure:"server"`
 	DB     DBConfig     `mapstructure:"db"`
 	Cors   CorsConfig   `mapstructure:"cors"`
 	Log    LogConfig    `mapstructure:"log"`
 	JWT    JwtConfig    `mapstructure:"jwt"`
+	Redis  RedisConfig  `mapstructure:"redis"`
 }
 
 // LoadConfig 使用 Viper 读取 YAML + .env
