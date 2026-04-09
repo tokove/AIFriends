@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"backend/pkg/constants"
 	"errors"
 	"fmt"
 	"io"
@@ -44,13 +45,21 @@ func UploadFile(userID uint, file *multipart.FileHeader, subDir string) (string,
 	// 1. 生成文件名: {userID}_{10位随机串}{后缀}
 	ext := filepath.Ext(file.Filename)
 	randomStr := strings.ReplaceAll(uuid.New().String(), "-", "")[:10]
-	fileName := fmt.Sprintf("%d_%s%s", userID, randomStr, ext)
+	var fileName, relPath string
+
+	switch subDir {
+	case constants.DirUserPhoto:
+		fileName = fmt.Sprintf("%d_%s%s", userID, randomStr, ext)
+		relPath = filepath.Join(subDir, fileName)
+	default:
+		fileName = fmt.Sprintf("%s%s", randomStr, ext)
+		relPath = filepath.Join(subDir, fmt.Sprintf("%d", userID), fileName)
+	}
 
 	// 2. 构造存储路径
 	// 数据库存这个: user/photos/1_abc1234567.jpg
-	relPath := filepath.Join(subDir, fileName)
-	// 物理路径: ./data/user/photos/1_abc1234567.jpg
-	fullPath := filepath.Join("./data", relPath)
+	// 物理路径: data/user/photos/1_abc1234567.jpg
+	fullPath := filepath.Join("data", relPath)
 
 	// 3. 确保目录存在 (mkdir -p ./data/user/photos)
 	if err := os.MkdirAll(filepath.Dir(fullPath), os.ModePerm); err != nil {

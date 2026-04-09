@@ -27,7 +27,7 @@ type userService struct {
 	repo UserRepository
 }
 
-// NewUserRepository 构造函数
+// NewUserService 构造函数
 func NewUserService(repo UserRepository) UserService {
 	return &userService{repo: repo}
 }
@@ -122,8 +122,8 @@ func (s *userService) UpdateProfile(ctx context.Context, userID uint, username, 
 
 	// 2. 简介长度校验
 	pLen := utf8.RuneCountInString(profile)
-	if pLen > constants.MaxProfileLen {
-		return nil, fmt.Errorf("简介太长了，最多支持 %d 个字", constants.MaxProfileLen)
+	if pLen > constants.MaxUserProfileLen {
+		return nil, fmt.Errorf("简介太长了，最多支持 %d 个字符", constants.MaxUserProfileLen)
 	}
 
 	// 3. 获取用户信息
@@ -152,23 +152,29 @@ func (s *userService) UpdateProfile(ctx context.Context, userID uint, username, 
 	user.Username = username
 	user.Profile = profile
 
+	oldPhotoURL := user.Photo
+	var newPhotoURL string
 	// 6. 图片处理
 	if photo != nil {
-		// RemoveFile 内部已带 default 保护逻辑
-		utils.RemoveFile(user.Photo)
-
-		path, err := utils.UploadFile(userID, photo, constants.DirUserPhoto)
+		url, err := utils.UploadFile(userID, photo, constants.DirUserPhoto)
 		if err != nil {
 			return nil, err
 		}
-		user.Photo = path
+		newPhotoURL = url
+		user.Photo = newPhotoURL
 	}
 
 	// 7. 写入数据库
 	if err := s.repo.Update(ctx, user); err != nil {
+		if newPhotoURL != "" {
+			_ = utils.RemoveFile(newPhotoURL) // 数据库没存上，刚才上传的新图就没用了，删掉它
+		}
 		zap.L().Error("[user service] Update error: ", zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")
 	}
 
+	if oldPhotoURL != "" && newPhotoURL != "" {
+		_ = utils.RemoveFile(oldPhotoURL)
+	}
 	return user, nil
 }

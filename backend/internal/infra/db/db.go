@@ -1,6 +1,7 @@
 package db
 
 import (
+	"backend/internal/character"
 	"backend/internal/config"
 	"fmt"
 	"os/user"
@@ -49,6 +50,7 @@ func InitDB(cfg *config.Config) {
 func AutoMigrate() {
 	if err := DB.AutoMigrate(
 		&user.User{},
+		&character.Character{},
 	); err != nil {
 		zap.L().Fatal("failed to automigrate", zap.Error(err))
 	}
