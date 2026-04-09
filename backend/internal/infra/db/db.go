@@ -1,10 +1,9 @@
 package db
 
 import (
-	"backend/internal/character"
 	"backend/internal/config"
+	"backend/internal/model"
 	"fmt"
-	"os/user"
 	"time"
 
 	"go.uber.org/zap"
@@ -49,8 +48,8 @@ func InitDB(cfg *config.Config) {
 
 func AutoMigrate() {
 	if err := DB.AutoMigrate(
-		&user.User{},
-		&character.Character{},
+		&model.User{},
+		&model.Character{},
 	); err != nil {
 		zap.L().Fatal("failed to automigrate", zap.Error(err))
 	}

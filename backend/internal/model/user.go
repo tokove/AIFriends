@@ -1,4 +1,5 @@
-package user
+package model
+
 
 import (
 	"time"

@@ -3,6 +3,7 @@ package user
 import (
 	"backend/internal/config"
 	"backend/internal/infra/redis"
+	"backend/internal/model"
 	"backend/pkg/constants"
 	"backend/pkg/utils"
 	"errors"
@@ -26,7 +27,7 @@ func NewUserHandler(svc UserService, jwt *config.JwtConfig) *userHandler {
 	}
 }
 
-func (h *userHandler) formatUserResponse(user *User) gin.H {
+func (h *userHandler) formatUserResponse(user *model.User) gin.H {
 	photo := user.Photo
 	if photo == "" {
 		photo = constants.DefaultUserPhoto
@@ -175,7 +176,7 @@ func (h *userHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	if photo != nil {
-		if err := utils.CheckImage(photo, constants.MaxFileSize); err != nil {
+		if err := utils.CheckImage(photo); err != nil {
 			c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 			return
 		}

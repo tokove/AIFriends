@@ -1,6 +1,7 @@
 package user
 
 import (
+	"backend/internal/model"
 	"backend/pkg/constants"
 	"backend/pkg/utils"
 	"context"
@@ -17,10 +18,10 @@ import (
 
 // UserService 接口定义（业务层契约）
 type UserService interface {
-	Register(ctx context.Context, username, password string) (*User, error)
-	Login(ctx context.Context, username, password string) (*User, error)
-	GetUserInfo(ctx context.Context, userID uint) (*User, error)
-	UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*User, error)
+	Register(ctx context.Context, username, password string) (*model.User, error)
+	Login(ctx context.Context, username, password string) (*model.User, error)
+	GetUserInfo(ctx context.Context, userID uint) (*model.User, error)
+	UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*model.User, error)
 }
 
 type userService struct {
@@ -32,7 +33,7 @@ func NewUserService(repo UserRepository) UserService {
 	return &userService{repo: repo}
 }
 
-func (s *userService) Register(ctx context.Context, username, password string) (*User, error) {
+func (s *userService) Register(ctx context.Context, username, password string) (*model.User, error) {
 	username = strings.TrimSpace(username)
 	password = strings.TrimSpace(password)
 
@@ -56,7 +57,7 @@ func (s *userService) Register(ctx context.Context, username, password string) (
 		return nil, errors.New("系统繁忙，请稍后再试")
 	}
 
-	user := &User{
+	user := &model.User{
 		Username: username,
 		Password: string(hashedPass),
 	}
@@ -69,7 +70,7 @@ func (s *userService) Register(ctx context.Context, username, password string) (
 	return user, nil
 }
 
-func (s *userService) Login(ctx context.Context, username, password string) (*User, error) {
+func (s *userService) Login(ctx context.Context, username, password string) (*model.User, error) {
 	username = strings.TrimSpace(username)
 	password = strings.TrimSpace(password)
 
@@ -94,7 +95,7 @@ func (s *userService) Login(ctx context.Context, username, password string) (*Us
 	return user, nil
 }
 
-func (s *userService) GetUserInfo(ctx context.Context, userID uint) (*User, error) {
+func (s *userService) GetUserInfo(ctx context.Context, userID uint) (*model.User, error) {
 	user, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -111,7 +112,7 @@ func (s *userService) GetUserInfo(ctx context.Context, userID uint) (*User, erro
 	return user, nil
 }
 
-func (s *userService) UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*User, error) {
+func (s *userService) UpdateProfile(ctx context.Context, userID uint, username, profile string, photo *multipart.FileHeader) (*model.User, error) {
 	username = strings.TrimSpace(username)
 
 	// 1. 用户名长度校验
