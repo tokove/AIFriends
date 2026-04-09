@@ -1,6 +1,7 @@
 package router
 
 import (
+	"backend/internal/character"
 	"backend/internal/config"
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
@@ -25,12 +26,17 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config) *gin.Engine {
 	userSvc := user.NewUserService(userRepo)
 	userHdl := user.NewUserHandler(userSvc, &cfg.JWT)
 
+	charRepo := character.NewCharRepository(db)
+	charSvc := character.NewCharService(charRepo)
+	charHdl := character.NewCharHandler(charSvc)
+
 	public := r.Group("/api")
 	{
 		// user
 		public.POST("/user/account/register", userHdl.Register)
 		public.POST("/user/account/login", userHdl.Login)
 		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
+
 	}
 
 	protected := r.Group("/api")
@@ -40,6 +46,13 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config) *gin.Engine {
 		protected.POST("/user/account/logout", userHdl.Logout)
 		protected.GET("/user/account/get_user_info", userHdl.GetUserInfo)
 		protected.POST("/user/profile/update/", userHdl.UpdateProfile)
+
+		// character
+		protected.POST("/create/character/create", charHdl.CreateChar)
+		protected.POST("/create/character/update", charHdl.UpdateChar)
+		protected.GET("/create/character/get_single", charHdl.GetCharSingle)
+		protected.GET("/create/character/get_list", charHdl.GetCharList)
+		protected.POST("/create/character/remove", charHdl.DeleteChar)
 	}
 
 	return r

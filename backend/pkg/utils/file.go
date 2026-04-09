@@ -15,9 +15,9 @@ import (
 )
 
 // CheckImage 深度安全检查：大小和真实内容类型
-func CheckImage(file *multipart.FileHeader, maxSize int64) error {
-	if file.Size > maxSize {
-		return fmt.Errorf("图片大小不能超过 %.fMB", float64(maxSize)/1024/1024)
+func CheckImage(file *multipart.FileHeader) error {
+	if file.Size > constants.MaxFileSize {
+		return fmt.Errorf("图片大小不能超过 %.fMB", float64(constants.MaxFileSize)/1024/1024)
 	}
 
 	f, err := file.Open()
