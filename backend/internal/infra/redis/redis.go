@@ -13,7 +13,6 @@ import (
 
 var (
 	RDB *redis.Client
-	Ctx = context.Background()
 )
 
 func InitRedis(cfg *config.Config) {
@@ -24,17 +23,15 @@ func InitRedis(cfg *config.Config) {
 		PoolSize: cfg.Redis.PoolSize,
 	})
 
-	// 设置一个超时 context 检查连接
-	ctx, cancel := context.WithTimeout(Ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	_, err := RDB.Ping(ctx).Result()
 	if err != nil {
-		zap.L().Fatal("Redis connection failed", zap.Error(err))
+		zap.L().Error("Redis is not available", zap.Error(err))
+		RDB = nil
+		return
 	}
 
-	zap.L().Info("Redis connected successfully",
-		zap.String("host", cfg.Redis.Host),
-		zap.Int("port", cfg.Redis.Port),
-	)
+	zap.L().Info("Redis connected successfully")
 }

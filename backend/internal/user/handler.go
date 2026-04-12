@@ -2,28 +2,31 @@ package user
 
 import (
 	"backend/internal/config"
-	"backend/internal/infra/redis"
 	"backend/internal/model"
 	"backend/pkg/constants"
 	"backend/pkg/utils"
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
 type userHandler struct {
 	svc UserService
 	jwt *config.JwtConfig
+	rdb *redis.Client
 }
 
-func NewUserHandler(svc UserService, jwt *config.JwtConfig) *userHandler {
+func NewUserHandler(svc UserService, jwt *config.JwtConfig, rdb *redis.Client) *userHandler {
 	return &userHandler{
 		svc: svc,
 		jwt: jwt,
+		rdb: rdb,
 	}
 }
 
@@ -98,9 +101,14 @@ func (h *userHandler) Login(c *gin.Context) {
 
 func (h *userHandler) Logout(c *gin.Context) {
 	authHeader := c.GetHeader("Authorization")
-	if authHeader != "" {
+	if authHeader != "" && h.rdb != nil {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		redis.RDB.Set(redis.Ctx, "blacklist:"+token, "1", time.Duration(h.jwt.AccessExp)*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		if err := h.rdb.Set(ctx, "blacklist:"+token, "1", time.Duration(h.jwt.AccessExp)*time.Second).Err(); err != nil {
+			zap.L().Warn("failed to blacklist token", zap.Error(err))
+		}
 	}
 
 	c.SetCookie("refresh_token", "", -1, "/", "", true, true)

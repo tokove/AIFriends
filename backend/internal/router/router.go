@@ -8,10 +8,11 @@ import (
 	"backend/internal/user"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
-func SetupRouter(mode string, db *gorm.DB, cfg *config.Config) *gin.Engine {
+func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client) *gin.Engine {
 	if mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -24,7 +25,7 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	userRepo := user.NewUserRepository(db)
 	userSvc := user.NewUserService(userRepo)
-	userHdl := user.NewUserHandler(userSvc, &cfg.JWT)
+	userHdl := user.NewUserHandler(userSvc, &cfg.JWT, rdb)
 
 	charRepo := character.NewCharRepository(db)
 	charSvc := character.NewCharService(charRepo)

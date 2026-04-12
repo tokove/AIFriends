@@ -35,7 +35,7 @@ func main() {
 	redis.InitRedis(cfg)
 
 	// init server
-	r := router.SetupRouter(cfg.Server.Mode, db.DB, cfg)
+	r := router.SetupRouter(cfg.Server.Mode, db.DB, cfg, redis.RDB)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
