@@ -152,7 +152,7 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 		return
 	}
 
-	var author model.User
+	var author *model.User
 	if len(rawChars) > 0 {
 		author = rawChars[0].Author
 	}

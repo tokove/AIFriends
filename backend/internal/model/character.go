@@ -17,5 +17,6 @@ type Character struct {
 	CreatedAt       time.Time      `json:"create_at"`
 	UpdatedAt       time.Time      `json:"update_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
-	Author          User           `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE;" json:"author,omitempty"`
+	
+	Author          *User          `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE;" json:"author,omitempty"`
 }

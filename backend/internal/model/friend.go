@@ -1,0 +1,22 @@
+package model
+
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type Friend struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	MeID        uint           `gorm:"index:idx_me_char;not null" json:"me_id"`
+	CharacterID uint           `gorm:"index:idx_me_char;not null" json:"character_id"`
+	Memory      string         `gorm:"type:text" json:"memory"`
+	ChatCount   int64          `gorm:"default:0" json:"chat_count"`
+	LastMessage string         `gorm:"type:varchar(500)" json:"last_message"`
+	CreatedAt   time.Time      `json:"create_time"`
+	UpdatedAt   time.Time      `json:"update_time"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	Me        *User      `gorm:"foreignKey:MeID;constraint:OnDelete:CASCADE;" json:"me,omitempty"`
+	Character *Character `gorm:"foreignKey:CharacterID;constraint:OnDelete:CASCADE;" json:"character,omitempty"`
+}
