@@ -19,7 +19,7 @@ type CharService interface {
 	CreateChar(ctx context.Context, authorID uint, name, profile string, photo, bg *multipart.FileHeader) error
 	UpdateChar(ctx context.Context, authorID, charID uint, name, profile string, photo, bg *multipart.FileHeader) error
 	GetCharSingle(ctx context.Context, charID uint) (*GetSingleResp, error)
-	GetUserChars(ctx context.Context, authorID uint) ([]*model.Character, error)
+	GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error)
 	DeleteChar(ctx context.Context, authorID, charID uint) error
 }
 
@@ -194,8 +194,8 @@ func (s *charService) GetCharSingle(ctx context.Context, charID uint) (*GetSingl
 	}, nil
 }
 
-func (s *charService) GetUserChars(ctx context.Context, authorID uint) ([]*model.Character, error) {
-	chars, err := s.repo.GetList(ctx, authorID)
+func (s *charService) GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error) {
+	chars, err := s.repo.GetList(ctx, authorID, itemsCount, constants.DefaultLimit)
 	if err != nil {
 		zap.L().Error("[char service] GetList db error", zap.Uint("userID", authorID), zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")

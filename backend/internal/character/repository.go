@@ -11,7 +11,7 @@ type CharRepository interface {
 	Create(ctx context.Context, char *model.Character) error
 	Update(ctx context.Context, char *model.Character) error
 	GetByID(ctx context.Context, id uint) (*model.Character, error)
-	GetList(ctx context.Context, authorID uint) ([]*model.Character, error)
+	GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
 }
 
@@ -39,9 +39,14 @@ func (r *charRepository) GetByID(ctx context.Context, id uint) (*model.Character
 	return &char, nil
 }
 
-func (r *charRepository) GetList(ctx context.Context, authorID uint) ([]*model.Character, error) {
+func (r *charRepository) GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error) {
 	var chars []*model.Character
-	if err := r.db.WithContext(ctx).Preload("Author").Where("author_id = ?", authorID).Order("created_at DESC").Find(&chars).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Author").
+		Where("author_id = ?", authorID).
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&chars).Error; err != nil {
 		return nil, err
 	}
 	return chars, nil

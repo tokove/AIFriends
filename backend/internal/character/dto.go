@@ -1,9 +1,5 @@
 package character
 
-type GetSingleReq struct {
-	CharID uint `json:"character_id"`
-}
-
 type DeleteCharReq struct {
 	CharID uint `json:"character_id"`
 }

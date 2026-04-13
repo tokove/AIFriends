@@ -119,13 +119,14 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 }
 
 func (h *charHandler) GetCharSingle(c *gin.Context) {
-	var req GetSingleReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	charIDStr := c.DefaultQuery("character_id", "0")
+	charID, err := strconv.ParseUint(charIDStr, 10, 64)
+	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
 		return
 	}
 
-	char, err := h.svc.GetCharSingle(c.Request.Context(), req.CharID)
+	char, err := h.svc.GetCharSingle(c.Request.Context(), uint(charID))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 		return
@@ -138,15 +139,26 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 }
 
 func (h *charHandler) GetCharList(c *gin.Context) {
-	uid, _ := c.Get("user_id")
-	userID, ok := uid.(uint)
-	if !ok {
-		zap.L().Error("[char handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+	userIDStr := c.DefaultQuery("user_id", "0")
+	itemsCountStr := c.DefaultQuery("items_count", "0")
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		zap.L().Error("[char handler] ParseUint error", zap.Error(err))
+		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		return
+	}
+	itemsCount, err := strconv.ParseInt(itemsCountStr, 10, 64)
+	if err != nil {
+		zap.L().Error("[char handler] ParseInt error", zap.Error(err))
+		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
 		return
 	}
 
-	rawChars, err := h.svc.GetUserChars(c.Request.Context(), userID)
+	if itemsCount < 0 {
+		itemsCount = 0
+	}
+	rawChars, err := h.svc.GetUserChars(c.Request.Context(), uint(userID), int(itemsCount))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 		return
@@ -157,7 +169,7 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 		author = rawChars[0].Author
 	}
 	user := UserProfileResp{
-		UserID:   userID,
+		UserID:   uint(userID),
 		Username: author.Username,
 		Profile:  author.Profile,
 		Photo:    constants.StaticBaseURL + author.Photo,
