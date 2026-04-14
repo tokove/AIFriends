@@ -119,9 +119,15 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 }
 
 func (h *charHandler) GetCharSingle(c *gin.Context) {
-	charIDStr := c.DefaultQuery("character_id", "0")
+	charIDStr := c.Query("character_id")
 	charID, err := strconv.ParseUint(charIDStr, 10, 64)
 	if err != nil {
+		zap.L().Error("[char handler] ParseUint error", zap.Error(err))
+		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		return
+	}
+	if charID == 0 {
+		zap.L().Error("[char handler] charID value is zero")
 		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
 		return
 	}
@@ -139,7 +145,7 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 }
 
 func (h *charHandler) GetCharList(c *gin.Context) {
-	userIDStr := c.DefaultQuery("user_id", "0")
+	userIDStr := c.Query("user_id")
 	itemsCountStr := c.DefaultQuery("items_count", "0")
 
 	userID, err := strconv.ParseUint(userIDStr, 10, 64)
@@ -148,6 +154,12 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
 		return
 	}
+	if userID == 0 {
+		zap.L().Error("[char handler] userID value is zero")
+		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		return
+	}
+
 	itemsCount, err := strconv.ParseInt(itemsCountStr, 10, 64)
 	if err != nil {
 		zap.L().Error("[char handler] ParseInt error", zap.Error(err))

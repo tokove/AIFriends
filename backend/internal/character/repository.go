@@ -53,5 +53,13 @@ func (r *charRepository) GetList(ctx context.Context, authorID uint, offset int,
 }
 
 func (r *charRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&model.Character{}, id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&model.Character{}, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("character_id = ?", id).Delete(&model.Friend{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
