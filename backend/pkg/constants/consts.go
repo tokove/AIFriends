@@ -20,4 +20,7 @@ const (
 	DirUserPhoto                = "user/photos"
 	DirCharacterPhoto           = "character/photos"
 	DirCharacterBackgroundImage = "character/background_images"
+
+	// 其它
+	DefaultLimit = 20
 )

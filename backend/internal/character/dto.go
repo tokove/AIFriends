@@ -1,7 +1,7 @@
 package character
 
 type DeleteCharReq struct {
-	CharID uint `json:"character_id"`
+	CharID uint `json:"character_id" binding:"required"`
 }
 
 type GetSingleResp struct {

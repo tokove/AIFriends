@@ -3,6 +3,7 @@ package router
 import (
 	"backend/internal/character"
 	"backend/internal/config"
+	"backend/internal/friend"
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
 	"backend/internal/user"
@@ -31,6 +32,10 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 	charSvc := character.NewCharService(charRepo)
 	charHdl := character.NewCharHandler(charSvc)
 
+	friendRepo := friend.NewFriendRepository(db)
+	friendSvc := friend.NewFriendService(friendRepo)
+	friendHdl := friend.NewFriendHandler(friendSvc)
+
 	public := r.Group("/api")
 	{
 		// user
@@ -38,6 +43,8 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 		public.POST("/user/account/login", userHdl.Login)
 		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
 
+		// character
+		public.GET("/create/character/get_list", charHdl.GetCharList)
 	}
 
 	protected := r.Group("/api")
@@ -52,8 +59,12 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 		protected.POST("/create/character/create", charHdl.CreateChar)
 		protected.POST("/create/character/update", charHdl.UpdateChar)
 		protected.GET("/create/character/get_single", charHdl.GetCharSingle)
-		protected.GET("/create/character/get_list", charHdl.GetCharList)
 		protected.POST("/create/character/remove", charHdl.DeleteChar)
+
+		// friend
+		protected.POST("/friend/get_or_create", friendHdl.GetOrCreate)
+		protected.GET("/friend/get_list", friendHdl.GetFriendList)
+		protected.POST("/friend/remove", friendHdl.RemoveFriend)
 	}
 
 	return r

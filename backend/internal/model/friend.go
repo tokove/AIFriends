@@ -17,6 +17,5 @@ type Friend struct {
 	UpdatedAt   time.Time      `json:"update_time"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 
-	Me        *User      `gorm:"foreignKey:MeID;constraint:OnDelete:CASCADE;" json:"me,omitempty"`
 	Character *Character `gorm:"foreignKey:CharacterID;constraint:OnDelete:CASCADE;" json:"character,omitempty"`
 }
