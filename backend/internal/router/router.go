@@ -4,12 +4,15 @@ import (
 	"backend/internal/character"
 	"backend/internal/config"
 	"backend/internal/friend"
+	"backend/internal/infra/llm"
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
 	"backend/internal/user"
+	"context"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -32,8 +35,21 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 	charSvc := character.NewCharService(charRepo)
 	charHdl := character.NewCharHandler(charSvc)
 
+	ctx := context.Background()
+	chatModel, err := llm.InitChatModel(ctx, cfg.AI)
+	if err != nil {
+		zap.L().Panic("InitChatModel error:", zap.Error(err))
+	}
+	chatGraph, err := friend.NewChatGraph(ctx, chatModel)
+	if err != nil {
+		zap.L().Panic("NewChatGraph error:", zap.Error(err))
+	}
+	memoryGraph, err := friend.NewMemoryGraph(ctx, chatModel)
+	if err != nil {
+		zap.L().Panic("NewMemoryGraph error:", zap.Error(err))
+	}
 	friendRepo := friend.NewFriendRepository(db)
-	friendSvc := friend.NewFriendService(friendRepo)
+	friendSvc := friend.NewFriendService(friendRepo, chatGraph, memoryGraph)
 	friendHdl := friend.NewFriendHandler(friendSvc)
 
 	public := r.Group("/api")
@@ -65,6 +81,8 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 		protected.POST("/friend/get_or_create", friendHdl.GetOrCreate)
 		protected.GET("/friend/get_list", friendHdl.GetFriendList)
 		protected.POST("/friend/remove", friendHdl.RemoveFriend)
+		protected.POST("/friend/message/chat", friendHdl.StreamChat)
+		protected.GET("/friend/message/get_history", friendHdl.GetMessageHistory)
 	}
 
 	return r

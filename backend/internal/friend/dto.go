@@ -27,3 +27,14 @@ type AuthorResp struct {
 type RemoveReq struct {
 	FriendID uint `json:"friend_id" binding:"required"`
 }
+
+type ChatReq struct {
+	FriendID uint   `json:"friend_id" binding:"required"`
+	Message  string `json:"message" binding:"required"`
+}
+
+type MessageResp struct {
+	ID          uint   `json:"id"`
+	UserMessage string `json:"user_message"`
+	Output      string `json:"output"`
+}

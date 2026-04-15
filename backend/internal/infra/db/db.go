@@ -51,6 +51,8 @@ func AutoMigrate() {
 		&model.User{},
 		&model.Character{},
 		&model.Friend{},
+		&model.Message{},
+		&model.SystemPrompt{},
 	); err != nil {
 		zap.L().Fatal("failed to automigrate", zap.Error(err))
 	}
