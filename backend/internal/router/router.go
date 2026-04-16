@@ -8,6 +8,7 @@ import (
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
 	"backend/internal/user"
+	"backend/pkg/constants"
 	"context"
 
 	"github.com/gin-gonic/gin"
@@ -55,8 +56,8 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 	public := r.Group("/api")
 	{
 		// user
-		public.POST("/user/account/register", userHdl.Register)
-		public.POST("/user/account/login", userHdl.Login)
+		public.POST("/user/account/register", middleware.RateLimitMiddleware(constants.LimitAuth), userHdl.Register)
+		public.POST("/user/account/login", middleware.RateLimitMiddleware(constants.LimitAuth), userHdl.Login)
 		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
 
 		// character
@@ -72,7 +73,7 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 		protected.POST("/user/profile/update/", userHdl.UpdateProfile)
 
 		// character
-		protected.POST("/create/character/create", charHdl.CreateChar)
+		protected.POST("/create/character/create", middleware.RateLimitMiddleware(constants.LimitCreateChar), charHdl.CreateChar)
 		protected.POST("/create/character/update", charHdl.UpdateChar)
 		protected.GET("/create/character/get_single", charHdl.GetCharSingle)
 		protected.POST("/create/character/remove", charHdl.DeleteChar)
@@ -81,7 +82,7 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 		protected.POST("/friend/get_or_create", friendHdl.GetOrCreate)
 		protected.GET("/friend/get_list", friendHdl.GetFriendList)
 		protected.POST("/friend/remove", friendHdl.RemoveFriend)
-		protected.POST("/friend/message/chat", friendHdl.StreamChat)
+		protected.POST("/friend/message/chat", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.StreamChat)
 		protected.GET("/friend/message/get_history", friendHdl.GetMessageHistory)
 	}
 

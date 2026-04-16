@@ -18,11 +18,10 @@ import (
 type FriendService interface {
 	GetOrCreate(ctx context.Context, charID, userID uint) (*model.Friend, error)
 	GetList(ctx context.Context, userID uint, itemsCount int) ([]*model.Friend, error)
-	DeleteFriend(ctx context.Context, friendID, userID uint) error
+	RemoveFriend(ctx context.Context, friendID, userID uint) error
 	StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error)
 	SaveMessage(ctx context.Context, msg *model.Message) error
 	UpdateMemory(ctx context.Context, friendID uint) error
-	UpdateFriendActiveStatus(ctx context.Context, friendID uint, lastMsg string) error
 	GetMessageCount(ctx context.Context, friendID uint) (int64, error)
 	GetMessageHistory(ctx context.Context, friendID, userID, lastMsgID uint, limit int) ([]*model.Message, error)
 }
@@ -42,30 +41,14 @@ func NewFriendService(repo FriendRepository, chatGraph compose.Runnable[ChatStat
 }
 
 func (s *friendService) GetOrCreate(ctx context.Context, charID, userID uint) (*model.Friend, error) {
-	friend, err := s.repo.GetFriend(ctx, charID, userID)
-	if err == nil {
-		return friend, nil
+	newFriend := &model.Friend{
+		CharacterID: charID,
+		MeID:        userID,
 	}
 
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		zap.L().Error("[friend service] GetFriend unexpected error", zap.Error(err))
+	if err := s.repo.AddFriend(ctx, newFriend); err != nil {
+		zap.L().Error("[friend service] AddFriend error", zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")
-	}
-
-	oldFriend, err := s.repo.GetFriendWithDeleted(ctx, charID, userID)
-	if err == nil {
-		if err := s.repo.RestoreFriend(ctx, oldFriend.ID); err != nil {
-			zap.L().Error("[friend service] RestoreFriend error", zap.Error(err), zap.Uint("id", oldFriend.ID))
-			return nil, errors.New("系统繁忙，请稍后再试")
-		}
-	} else {
-		newFriend := &model.Friend{
-			CharacterID: charID,
-			MeID:        userID,
-		}
-		if err := s.repo.CreateFriend(ctx, newFriend); err != nil {
-			zap.L().Warn("[friend service] CreateFriend conflict, retrying get", zap.Error(err))
-		}
 	}
 
 	f, err := s.repo.GetFriend(ctx, charID, userID)
@@ -73,6 +56,7 @@ func (s *friendService) GetOrCreate(ctx context.Context, charID, userID uint) (*
 		zap.L().Error("[friend service] Final GetFriend error", zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")
 	}
+
 	return f, nil
 }
 
@@ -85,7 +69,7 @@ func (s *friendService) GetList(ctx context.Context, userID uint, itemsCount int
 	return friends, nil
 }
 
-func (s *friendService) DeleteFriend(ctx context.Context, friendID, userID uint) error {
+func (s *friendService) RemoveFriend(ctx context.Context, friendID, userID uint) error {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -99,7 +83,7 @@ func (s *friendService) DeleteFriend(ctx context.Context, friendID, userID uint)
 		return errors.New("好友不存在")
 	}
 
-	if err := s.repo.DeleteFriend(ctx, friendID); err != nil {
+	if err := s.repo.RemoveFriend(ctx, friendID); err != nil {
 		zap.L().Error("[friend service] DeleteFriend db error", zap.Error(err))
 		return errors.New("系统繁忙，请稍后再试")
 	}
@@ -107,8 +91,8 @@ func (s *friendService) DeleteFriend(ctx context.Context, friendID, userID uint)
 }
 
 func (s *friendService) SaveMessage(ctx context.Context, msg *model.Message) error {
-	if err := s.repo.CreateMessage(ctx, msg); err != nil {
-		zap.L().Error("[friend service] CreateMessage db error", zap.Error(err))
+	if err := s.repo.SaveMessageTx(ctx, msg); err != nil {
+		zap.L().Error("[friend service] SaveMessageTx error", zap.Error(err))
 		return errors.New("系统繁忙，请稍后再试")
 	}
 	return nil
@@ -232,16 +216,6 @@ func (s *friendService) UpdateMemory(ctx context.Context, friendID uint) error {
 	cleanJSON = strings.TrimSpace(cleanJSON)
 
 	return s.repo.UpdateFriendMemory(ctx, friendID, cleanJSON)
-}
-
-func (s *friendService) UpdateFriendActiveStatus(ctx context.Context, friendID uint, lastMsg string) error {
-	if err := s.repo.UpdateFriendActiveStatus(ctx, friendID, lastMsg); err != nil {
-		zap.L().Error("[friend service] UpdateFriendActiveStatus db error",
-			zap.Error(err),
-			zap.Uint("friendID", friendID))
-		return errors.New("系统繁忙，请稍后再试")
-	}
-	return nil
 }
 
 func (s *friendService) GetMessageCount(ctx context.Context, friendID uint) (int64, error) {

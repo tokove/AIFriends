@@ -4,6 +4,7 @@ import (
 	"backend/internal/model"
 	"backend/pkg/constants"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -136,7 +137,7 @@ func (h *friendHandler) RemoveFriend(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.DeleteFriend(c.Request.Context(), req.FriendID, userID); err != nil {
+	if err := h.svc.RemoveFriend(c.Request.Context(), req.FriendID, userID); err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 		return
 	}
@@ -159,6 +160,7 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return
 	}
 
+	// 传入的 c.Request.Context() 会在客户端断开时被取消
 	stream, inputStr, err := h.svc.StreamChat(c.Request.Context(), req.FriendID, userID, req.Message)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
@@ -174,7 +176,6 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	var finalOutput string
 	var inputTokens, outputTokens, totalTokens int
 
-	// 安全的包含中文字符的截断函数
 	truncateString := func(str string, maxLen int) string {
 		runes := []rune(str)
 		if len(runes) > maxLen {
@@ -183,18 +184,15 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return str
 	}
 
-	// 提取出异步存库的逻辑 (将外部变量作为参数传入，避免协程抢占造成的数据竞争)
+	// 提取出异步存库的逻辑 (去掉了内部多余的 go func)
 	saveAndTriggerMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) {
 		saveCtx := context.Background()
 
-		uMsg := truncateString(req.Message, 500)
-		outMsg := truncateString(currentFinalOutput, 500)
-
 		dbMsg := &model.Message{
 			FriendID:     req.FriendID,
-			UserMessage:  uMsg,
+			UserMessage:  truncateString(req.Message, 500),
 			Input:        inputStr,
-			Output:       outMsg,
+			Output:       truncateString(currentFinalOutput, 500),
 			InputTokens:  inTok,
 			OutputTokens: outTok,
 			TotalTokens:  totTok,
@@ -202,45 +200,27 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 		if err := h.svc.SaveMessage(saveCtx, dbMsg); err != nil {
 			zap.L().Error("[friend handler] SaveMessage error", zap.Error(err))
+			return
 		}
-
-		previewMsg := truncateString(currentFinalOutput, 50)
-		if len([]rune(currentFinalOutput)) > 50 {
-			previewMsg += "..."
-		}
-		h.svc.UpdateFriendActiveStatus(saveCtx, req.FriendID, previewMsg)
 
 		if isInterrupted {
-			zap.L().Info("[friend handler] 对话被中断，跳过本次记忆总结评估", zap.Uint("friend_id", req.FriendID))
+			zap.L().Info("[friend handler] 对话被中断，跳过记忆总结", zap.Uint("friend_id", req.FriendID))
 			return
 		}
 
 		count, err := h.svc.GetMessageCount(saveCtx, req.FriendID)
 		if err == nil && count > 0 && count%2 == 0 {
-			zap.L().Info("[friend handler] 触发记忆总结", zap.Uint("friend_id", req.FriendID))
-
-			go func() {
-				memCtx := context.Background()
-				if err := h.svc.UpdateMemory(memCtx, req.FriendID); err != nil {
-					zap.L().Error("[friend handler] 记忆总结失败", zap.Error(err))
-				} else {
-					zap.L().Info("[friend handler] 记忆总结完成并落盘", zap.Uint("friend_id", req.FriendID))
-				}
-			}()
+			// 这里不需要 go func() 了，因为外层已经是 go 调用
+			if err := h.svc.UpdateMemory(context.Background(), req.FriendID); err != nil {
+				zap.L().Error("[friend handler] 记忆总结失败", zap.Error(err))
+			}
 		}
 	}
 
 	c.Stream(func(w io.Writer) bool {
-		// 用户中途关掉网页断开连接
-		if c.Request.Context().Err() != nil {
-			zap.L().Warn("[friend handler] 用户主动断开连接，提前落盘止损", zap.Uint("friendID", req.FriendID))
-			// 使用 go 协程去存，立刻释放当前的 Gin 工作线程
-			go saveAndTriggerMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
-			return false
-		}
-
 		msg, err := stream.Recv()
 
+		// 1. 正常结束
 		if err == io.EOF {
 			fmt.Println("\n[流式输出结束]")
 			c.SSEvent("message", "[DONE]")
@@ -248,14 +228,23 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 			return false
 		}
 
-		// 大模型 API 中断，把已经生成的半截话保存下来
+		// 2. 发生错误或中断
 		if err != nil {
+			// 判断是否是客户端主动断开 (Context Canceled)
+			if errors.Is(err, context.Canceled) || c.Request.Context().Err() != nil {
+				zap.L().Info("[friend handler] 用户主动断开连接，提前落盘止损", zap.Uint("friendID", req.FriendID))
+				go saveAndTriggerMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
+				return false
+			}
+
+			// 真正的未知流式错误
 			zap.L().Error("[friend handler] Stream error", zap.Error(err))
-			c.SSEvent("error", "生成回复中断")
+			c.SSEvent("error", "生成回复中断") // 仅在真正的错误时发送
 			go saveAndTriggerMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
 			return false
 		}
 
+		// 3. 正常拼接输出
 		finalOutput += msg.Content
 		fmt.Print(msg.Content)
 
