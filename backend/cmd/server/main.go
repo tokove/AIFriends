@@ -6,6 +6,7 @@ import (
 	"backend/internal/infra/logger"
 	"backend/internal/infra/redis"
 	"backend/internal/router"
+	"backend/internal/task"
 	"context"
 	"fmt"
 	"log"
@@ -33,6 +34,9 @@ func main() {
 
 	// init redis
 	redis.InitRedis(cfg)
+
+	// init cron
+	task.StartChatCountResetTask(db.DB)
 
 	// init server
 	r := router.SetupRouter(cfg.Server.Mode, db.DB, cfg, redis.RDB)
