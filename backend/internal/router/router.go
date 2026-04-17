@@ -62,6 +62,9 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 
 		// character
 		public.GET("/create/character/get_list", charHdl.GetCharList)
+
+		// homepage
+		public.GET("/homepage/index", charHdl.GetFeedOrSearch)
 	}
 
 	protected := r.Group("/api")

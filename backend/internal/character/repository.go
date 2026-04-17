@@ -13,6 +13,11 @@ type CharRepository interface {
 	GetByID(ctx context.Context, id uint) (*model.Character, error)
 	GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
+	SearchRecall(ctx context.Context, query string, limit int) ([]*model.SearchCandidate, error)
+	RecallTotal(ctx context.Context, limit int) ([]*model.Character, error)
+	RecallRecent(ctx context.Context, limit int) ([]*model.Character, error)
+	RecallNew(ctx context.Context, limit int) ([]*model.Character, error)
+	RecallSocial(ctx context.Context, limit int) ([]*model.Character, error)
 }
 
 type charRepository struct {
@@ -62,4 +67,43 @@ func (r *charRepository) Delete(ctx context.Context, id uint) error {
 		}
 		return nil
 	})
+}
+
+func (r *charRepository) SearchRecall(ctx context.Context, query string, limit int) ([]*model.SearchCandidate, error) {
+	var candidates []*model.SearchCandidate
+	err := r.db.WithContext(ctx).
+		Table("characters").
+		Preload("Author").
+		Select("*, similarity(name, ?) as text_score", query).
+		Where("name ILIKE ? OR profile ILIKE ?", "%"+query+"%", "%"+query+"%").
+		Order("text_score DESC").
+		Limit(limit).
+		Find(&candidates).Error
+	return candidates, err
+}
+
+func (r *charRepository) RecallTotal(ctx context.Context, limit int) ([]*model.Character, error) {
+	var chars []*model.Character
+	err := r.db.WithContext(ctx).Preload("Author").Order("total_chat_count DESC").Limit(limit).Find(&chars).Error
+	return chars, err
+}
+
+func (r *charRepository) RecallRecent(ctx context.Context, limit int) ([]*model.Character, error) {
+	var chars []*model.Character
+	err := r.db.WithContext(ctx).Preload("Author").Order("recent_chat_count DESC").Limit(limit).Find(&chars).Error
+	return chars, err
+}
+
+func (r *charRepository) RecallNew(ctx context.Context, limit int) ([]*model.Character, error) {
+	var chars []*model.Character
+	err := r.db.WithContext(ctx).Preload("Author").Order("updated_at DESC").Limit(limit).Find(&chars).Error
+	return chars, err
+}
+
+func (r *charRepository) RecallSocial(ctx context.Context, limit int) ([]*model.Character, error) {
+	var chars []*model.Character
+	if err := r.db.WithContext(ctx).Preload("Author").Order("friend_count DESC").Limit(limit).Find(&chars).Error; err != nil {
+		return nil, err
+	}
+	return chars, nil
 }

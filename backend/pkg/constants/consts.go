@@ -24,6 +24,7 @@ const (
 	// 其它
 	DefaultLimit        = 20
 	DefaultMessageCount = 20
+	DefaultRecallLimit  = 200
 
 	// 聊天模块
 	SystemPromptTitleReply  = "回复"

@@ -13,8 +13,8 @@ type Friend struct {
 	Memory      string         `gorm:"type:text" json:"memory"`
 	ChatCount   int64          `gorm:"default:0" json:"chat_count"`
 	LastMessage string         `gorm:"type:text" json:"last_message"`
-	CreatedAt   time.Time      `json:"create_time"`
-	UpdatedAt   time.Time      `json:"update_time"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Character *Character `gorm:"foreignKey:CharacterID;constraint:OnDelete:CASCADE;" json:"character,omitempty"`

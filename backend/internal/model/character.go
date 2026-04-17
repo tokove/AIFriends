@@ -16,9 +16,19 @@ type Character struct {
 	Photo           string         `gorm:"type:varchar(255);not null" json:"photo"`
 	Profile         string         `gorm:"type:text;not null" json:"profile"`
 	BackgroundImage string         `gorm:"type:varchar(255);not null" json:"background_image"`
-	CreatedAt       time.Time      `json:"create_at"`
-	UpdatedAt       time.Time      `json:"update_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Author *User `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE;" json:"author,omitempty"`
+}
+
+type SearchCandidate struct {
+	Character
+	TextScore float64 `gorm:"column:text_score"`
+}
+
+type RankedCharacter struct {
+	*Character
+	Score float64
 }

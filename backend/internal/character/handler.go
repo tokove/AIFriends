@@ -234,3 +234,25 @@ func (h *charHandler) DeleteChar(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"result": "success"})
 }
+
+func (h *charHandler) GetFeedOrSearch(c *gin.Context) {
+	query := c.Query("query")
+	cursor := c.Query("cursor")
+
+	limit := constants.DefaultLimit
+	chars, nextCursor, err := h.svc.GetFeedOrSearch(c.Request.Context(), query, cursor, limit)
+	if err != nil {
+		zap.L().Error("[char handler] 获取首页或搜索数据失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "系统繁忙，请稍后再试"})
+		return
+	}
+
+	
+
+	c.JSON(http.StatusOK, gin.H{
+		"result":      "success",
+		"characters":  chars,
+		"next_cursor": nextCursor,
+		"has_more":    len(chars) == limit && nextCursor != "",
+	})
+}

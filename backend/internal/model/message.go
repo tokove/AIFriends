@@ -15,7 +15,7 @@ type Message struct {
 	InputTokens  int            `gorm:"default:0" json:"input_tokens"`
 	OutputTokens int            `gorm:"default:0" json:"output_tokens"`
 	TotalTokens  int            `gorm:"default:0" json:"total_tokens"`
-	CreatedAt    time.Time      `json:"create_time"`
+	CreatedAt    time.Time      `json:"created_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Friend *Friend `gorm:"foreignKey:FriendID" json:"-"`
