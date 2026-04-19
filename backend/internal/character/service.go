@@ -7,14 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
-	"math/rand/v2"
 	"mime/multipart"
-	"sort"
-	"strconv"
 	"strings"
-	"sync"
-	"time"
 	"unicode/utf8"
 
 	"go.uber.org/zap"
@@ -27,7 +21,7 @@ type CharService interface {
 	GetCharSingle(ctx context.Context, charID uint) (*GetSingleResp, error)
 	GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error)
 	DeleteChar(ctx context.Context, authorID, charID uint) error
-	GetFeedOrSearch(ctx context.Context, query string, cursor string, limit int) ([]*model.Character, string, error)
+	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
 }
 
 type charService struct {
@@ -233,121 +227,14 @@ func (s *charService) DeleteChar(ctx context.Context, authorID, charID uint) err
 	return nil
 }
 
-func (s *charService) GetFeedOrSearch(ctx context.Context, query string, cursor string, limit int) ([]*model.Character, string, error) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	cmap := make(map[uint]*model.Character)
-	textScoreMap := make(map[uint]float64)
-
-	recallLimit := constants.DefaultRecallLimit
-
-	if query != "" {
-		candidates, err := s.repo.SearchRecall(ctx, query, recallLimit)
-		if err == nil {
-			for _, c := range candidates {
-				cmap[c.ID] = &c.Character
-				textScoreMap[c.ID] = c.TextScore
-			}
+func (s *charService) HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error) {
+	chars, err := s.repo.HomeOrSearch(ctx, query, cursorTime, cursorID, limit)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("角色不存在")
 		}
-	} else {
-		add := func(cs []*model.Character) {
-			mu.Lock()
-			defer mu.Unlock()
-			for _, c := range cs {
-				if _, ok := cmap[c.ID]; !ok {
-					cmap[c.ID] = c
-					textScoreMap[c.ID] = 0.0
-				}
-			}
-		}
-
-		wg.Add(4)
-		go func() { defer wg.Done(); cs, _ := s.repo.RecallTotal(ctx, recallLimit); add(cs) }()
-		go func() { defer wg.Done(); cs, _ := s.repo.RecallRecent(ctx, recallLimit); add(cs) }()
-		go func() { defer wg.Done(); cs, _ := s.repo.RecallNew(ctx, recallLimit); add(cs) }()
-		go func() { defer wg.Done(); cs, _ := s.repo.RecallSocial(ctx, recallLimit); add(cs) }()
-		wg.Wait()
+		zap.L().Error("[char service] HomeOrSearch db error", zap.Error(err))
+		return nil, err
 	}
-
-	// 2. 算分融合层 (Rerank)
-	const tau = 172800.0
-	now := time.Now()
-
-	TimeDecay := func(ut time.Time) float64 {
-		dt := now.Sub(ut).Seconds()
-		if dt < 0 {
-			dt = 0
-		}
-		return math.Exp(-dt / tau)
-	}
-
-	CalScore := func(c *model.Character, tScore float64) float64 {
-		st := 0.3 * math.Log1p(float64(c.TotalChatCount))
-		sr := 0.4 * math.Log1p(float64(c.RecentChatCount))
-		sd := 0.2 * TimeDecay(c.UpdatedAt)
-		sf := 0.1 * math.Log1p(float64(c.FriendCount))
-		baseScore := st + sr + sd + sf + (rand.Float64() * 0.01)
-
-		weightText := 5.0
-		weightBase := 1.0
-		if query == "" {
-			weightText = 0.0
-		}
-		return (tScore * weightText) + (baseScore * weightBase)
-	}
-
-	res := make([]*model.RankedCharacter, 0, len(cmap))
-	for _, c := range cmap {
-		res = append(res, &model.RankedCharacter{
-			Character: c,
-			Score:     CalScore(c, textScoreMap[c.ID]),
-		})
-	}
-
-	// 3. 排序 (Sort) - 分数降序，ID降序防碰撞
-	sort.Slice(res, func(i, j int) bool {
-		if res[i].Score == res[j].Score {
-			return res[i].Character.ID > res[j].Character.ID
-		}
-		return res[i].Score > res[j].Score
-	})
-
-	// 4. 游标解析与截断 (Cursor Pagination)
-	var lastScore float64 = math.MaxFloat64
-	var lastID uint = 0
-	if cursor != "" && cursor != "0" {
-		parts := strings.Split(cursor, "_")
-		if len(parts) == 2 {
-			if s, err := strconv.ParseFloat(parts[0], 64); err == nil {
-				lastScore = s
-			}
-			if id, err := strconv.ParseUint(parts[1], 10, 32); err == nil {
-				lastID = uint(id)
-			}
-		}
-	}
-
-	var finalRes []*model.RankedCharacter
-	for _, item := range res {
-		if item.Score < lastScore || (item.Score == lastScore && item.Character.ID < lastID) {
-			finalRes = append(finalRes, item)
-			if len(finalRes) == limit {
-				break
-			}
-		}
-	}
-
-	// 5. 拼装结果与下一页游标
-	nextCursor := ""
-	out := make([]*model.Character, 0, len(finalRes))
-	if len(finalRes) > 0 {
-		lastItem := finalRes[len(finalRes)-1]
-		nextCursor = fmt.Sprintf("%f_%d", lastItem.Score, lastItem.Character.ID)
-
-		for _, r := range finalRes {
-			out = append(out, r.Character)
-		}
-	}
-
-	return out, nextCursor, nil
+	return chars, nil
 }

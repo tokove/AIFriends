@@ -5,8 +5,10 @@ import (
 	"backend/pkg/constants"
 	"backend/pkg/utils"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -235,24 +237,54 @@ func (h *charHandler) DeleteChar(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": "success"})
 }
 
-func (h *charHandler) GetFeedOrSearch(c *gin.Context) {
+func (h *charHandler) HomeOrSearch(c *gin.Context) {
 	query := c.Query("query")
 	cursor := c.Query("cursor")
 
-	limit := constants.DefaultLimit
-	chars, nextCursor, err := h.svc.GetFeedOrSearch(c.Request.Context(), query, cursor, limit)
+	var cursorTime int64 = 0
+	var cursorID uint = 0
+	var err error
+
+	if cursor != "" {
+		parts := strings.Split(cursor, "_")
+		if len(parts) == 2 {
+			cursorTime, err = strconv.ParseInt(parts[0], 10, 64)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+				return
+			}
+			id, err := strconv.ParseUint(parts[1], 10, 32)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+				return
+			}
+			cursorID = uint(id)
+		}
+	}
+
+	chars, err := h.svc.HomeOrSearch(c.Request.Context(), query, cursorTime, cursorID, constants.DefaultLimit+1)
 	if err != nil {
-		zap.L().Error("[char handler] 获取首页或搜索数据失败", zap.Error(err))
+		zap.L().Error("[char handler] GetFeedOrSearch error", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "系统繁忙，请稍后再试"})
 		return
 	}
 
-	
+	var hasMore bool
+	if len(chars) > constants.DefaultLimit {
+		hasMore = true
+		chars = chars[:constants.DefaultLimit]
+	}
+
+	var nextCursor string
+	if len(chars) > 0 {
+		char := chars[len(chars)-1]
+		nextCursor = fmt.Sprintf("%d_%d", char.UpdatedAt.Unix(), char.ID)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"result":      "success",
 		"characters":  chars,
 		"next_cursor": nextCursor,
-		"has_more":    len(chars) == limit && nextCursor != "",
+		"has_more":    hasMore,
 	})
 }

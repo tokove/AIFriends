@@ -22,13 +22,3 @@ type Character struct {
 
 	Author *User `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE;" json:"author,omitempty"`
 }
-
-type SearchCandidate struct {
-	Character
-	TextScore float64 `gorm:"column:text_score"`
-}
-
-type RankedCharacter struct {
-	*Character
-	Score float64
-}

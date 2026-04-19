@@ -3,6 +3,7 @@ package character
 import (
 	"backend/internal/model"
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -13,11 +14,7 @@ type CharRepository interface {
 	GetByID(ctx context.Context, id uint) (*model.Character, error)
 	GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
-	SearchRecall(ctx context.Context, query string, limit int) ([]*model.SearchCandidate, error)
-	RecallTotal(ctx context.Context, limit int) ([]*model.Character, error)
-	RecallRecent(ctx context.Context, limit int) ([]*model.Character, error)
-	RecallNew(ctx context.Context, limit int) ([]*model.Character, error)
-	RecallSocial(ctx context.Context, limit int) ([]*model.Character, error)
+	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
 }
 
 type charRepository struct {
@@ -69,41 +66,29 @@ func (r *charRepository) Delete(ctx context.Context, id uint) error {
 	})
 }
 
-func (r *charRepository) SearchRecall(ctx context.Context, query string, limit int) ([]*model.SearchCandidate, error) {
-	var candidates []*model.SearchCandidate
-	err := r.db.WithContext(ctx).
-		Table("characters").
-		Preload("Author").
-		Select("*, similarity(name, ?) as text_score", query).
-		Where("name ILIKE ? OR profile ILIKE ?", "%"+query+"%", "%"+query+"%").
-		Order("text_score DESC").
-		Limit(limit).
-		Find(&candidates).Error
-	return candidates, err
-}
-
-func (r *charRepository) RecallTotal(ctx context.Context, limit int) ([]*model.Character, error) {
+func (r *charRepository) HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error) {
 	var chars []*model.Character
-	err := r.db.WithContext(ctx).Preload("Author").Order("total_chat_count DESC").Limit(limit).Find(&chars).Error
-	return chars, err
-}
+	q := r.db.Debug().WithContext(ctx)
 
-func (r *charRepository) RecallRecent(ctx context.Context, limit int) ([]*model.Character, error) {
-	var chars []*model.Character
-	err := r.db.WithContext(ctx).Preload("Author").Order("recent_chat_count DESC").Limit(limit).Find(&chars).Error
-	return chars, err
-}
+	if query != "" {
+		like := "%" + query + "%"
+		q = q.Where(
+			r.db.Where("name ILIKE ?", like).Or("profile ILIKE ?", like),
+		)
+	}
 
-func (r *charRepository) RecallNew(ctx context.Context, limit int) ([]*model.Character, error) {
-	var chars []*model.Character
-	err := r.db.WithContext(ctx).Preload("Author").Order("updated_at DESC").Limit(limit).Find(&chars).Error
-	return chars, err
-}
+	if cursorTime > 0 {
+		q = q.Where(
+			"updated_at < ? OR (updated_at = ? AND id < ?)",
+			time.Unix(cursorTime, 0),
+			time.Unix(cursorTime, 0),
+			cursorID,
+		)
+	}
 
-func (r *charRepository) RecallSocial(ctx context.Context, limit int) ([]*model.Character, error) {
-	var chars []*model.Character
-	if err := r.db.WithContext(ctx).Preload("Author").Order("friend_count DESC").Limit(limit).Find(&chars).Error; err != nil {
+	if err := q.Order("updated_at DESC, id DESC").Limit(limit).Find(&chars).Error; err != nil {
 		return nil, err
 	}
+
 	return chars, nil
 }
