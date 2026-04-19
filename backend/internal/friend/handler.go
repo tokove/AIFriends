@@ -160,22 +160,23 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return
 	}
 
-	// 传入的 c.Request.Context() 会在客户端断开时被取消
+	// 获取流和输入
 	stream, inputStr, err := h.svc.StreamChat(c.Request.Context(), req.FriendID, userID, req.Message)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 		return
 	}
-	defer stream.Close()
+	defer stream.Close() // 关流
 
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Content-Type", "text/event-stream") // 设置响应头为 SSE
+	c.Writer.Header().Set("Cache-Control", "no-cache")         // 禁止缓存 -> nginx
+	c.Writer.Header().Set("Connection", "keep-alive")          // 保持长连接获取信息
 	c.Writer.Flush()
 
 	var finalOutput string
 	var inputTokens, outputTokens, totalTokens int
 
+	// 判断字符串转为 rune 的长度，根据 maxLen 截取
 	truncateString := func(str string, maxLen int) string {
 		runes := []rune(str)
 		if len(runes) > maxLen {
@@ -184,21 +185,21 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return str
 	}
 
-	// 提取出异步存库的逻辑 (去掉了内部多余的 go func)
-	saveAndTriggerMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) {
+	// 保存消息并检查是否更新记忆，每10条更新一次记忆
+	saveAndUpdateMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) {
 		saveCtx := context.Background()
 
-		dbMsg := &model.Message{
+		msg := &model.Message{
 			FriendID:     req.FriendID,
-			UserMessage:  truncateString(req.Message, 500),
+			UserMessage:  truncateString(req.Message, constants.MaxMsgLen),
 			Input:        inputStr,
-			Output:       truncateString(currentFinalOutput, 500),
+			Output:       truncateString(currentFinalOutput, constants.MaxMsgLen),
 			InputTokens:  inTok,
 			OutputTokens: outTok,
 			TotalTokens:  totTok,
 		}
 
-		if err := h.svc.SaveMessage(saveCtx, dbMsg); err != nil {
+		if err := h.svc.SaveMessage(saveCtx, msg); err != nil {
 			zap.L().Error("[friend handler] SaveMessage error", zap.Error(err))
 			return
 		}
@@ -210,43 +211,43 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 		count, err := h.svc.GetMessageCount(saveCtx, req.FriendID)
 		if err == nil && count > 0 && count%2 == 0 {
-			// 这里不需要 go func() 了，因为外层已经是 go 调用
 			if err := h.svc.UpdateMemory(context.Background(), req.FriendID); err != nil {
 				zap.L().Error("[friend handler] 记忆总结失败", zap.Error(err))
 			}
 		}
 	}
 
+	// true 和 false 表示接下来还有无消息
 	c.Stream(func(w io.Writer) bool {
 		msg, err := stream.Recv()
 
-		// 1. 正常结束
+		// 正常结束
 		if err == io.EOF {
 			fmt.Println("\n[流式输出结束]")
 			c.SSEvent("message", "[DONE]")
-			go saveAndTriggerMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
+			go saveAndUpdateMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
 			return false
 		}
 
-		// 2. 发生错误或中断
+		// 发生错误或中断
 		if err != nil {
 			// 判断是否是客户端主动断开 (Context Canceled)
 			if errors.Is(err, context.Canceled) || c.Request.Context().Err() != nil {
-				zap.L().Info("[friend handler] 用户主动断开连接，提前落盘止损", zap.Uint("friendID", req.FriendID))
-				go saveAndTriggerMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
+				zap.L().Info("[friend handler] 用户主动断开连接", zap.Uint("friendID", req.FriendID))
+				go saveAndUpdateMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
 				return false
 			}
 
-			// 真正的未知流式错误
+			// 其他错误
 			zap.L().Error("[friend handler] Stream error", zap.Error(err))
-			c.SSEvent("error", "生成回复中断") // 仅在真正的错误时发送
-			go saveAndTriggerMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
+			c.SSEvent("error", "生成回复中断")
+			go saveAndUpdateMemory(true, finalOutput, inputTokens, outputTokens, totalTokens)
 			return false
 		}
 
-		// 3. 正常拼接输出
+		// 正常拼接输出
 		finalOutput += msg.Content
-		fmt.Print(msg.Content)
+		fmt.Println(msg.Content)
 
 		if msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
 			inputTokens = msg.ResponseMeta.Usage.PromptTokens
@@ -254,6 +255,7 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 			totalTokens = msg.ResponseMeta.Usage.TotalTokens
 		}
 
+		// 一块一块上传
 		c.SSEvent("message", msg.Content)
 		return true
 	})
@@ -269,37 +271,48 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 	}
 
 	friendIDStr := c.Query("friend_id")
-	lastMsgIDStr := c.DefaultQuery("last_message_id", "0")
+	cursorStr := c.Query("cursor")
 
-	friendID, _ := strconv.ParseUint(friendIDStr, 10, 32)
-	lastMsgID, _ := strconv.ParseUint(lastMsgIDStr, 10, 32)
-
-	if friendID == 0 {
+	friendID, err := strconv.ParseUint(friendIDStr, 10, 32)
+	if err != nil || friendID == 0 {
 		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
 		return
 	}
+	cursor, err := strconv.ParseUint(cursorStr, 10, 32)
+	if err != nil {
+		cursor = 0
+	}
 
-	msgs, err := h.svc.GetMessageHistory(c.Request.Context(), uint(friendID), userID, uint(lastMsgID), constants.DefaultLimit)
+	msgs, err := h.svc.GetMessageHistory(c.Request.Context(), uint(friendID), userID, uint(cursor), constants.DefaultLimit+1)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
 		return
 	}
 
-	var resList []MessageResp
+	var hasMore bool
+	if len(msgs) > constants.DefaultLimit {
+		hasMore = true
+		msgs = msgs[:constants.DefaultLimit]
+	}
+
+	resps := make([]MessageResp, 0, len(msgs))
 	for _, m := range msgs {
-		resList = append(resList, MessageResp{
+		resps = append(resps, MessageResp{
 			ID:          m.ID,
 			UserMessage: m.UserMessage,
 			Output:      m.Output,
 		})
 	}
 
-	if resList == nil {
-		resList = make([]MessageResp, 0)
+	var nextCursor uint
+	if len(msgs) > 0 {
+		nextCursor = msgs[len(msgs)-1].ID
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"result":   "success",
-		"messages": resList,
+		"result":      "success",
+		"messages":    resps,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
 	})
 }

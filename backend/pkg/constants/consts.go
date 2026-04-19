@@ -32,8 +32,9 @@ const (
 
 	MaxChatHistoryCount   = 20
 	MaxMemorySummaryCount = 20
-	MaxContextLength      = 4000  // 上下文防爆字符阈值
-	MaxDBInputLength      = 10000 // 数据库存储前强制截断阈值
+	MaxMsgLen             = 500
+	MaxContextLength      = 4000
+	MaxDBInputLength      = 10000
 
 	MarkdownJSONPrefix = "```json\n"
 	MarkdownPrefix     = "```\n"

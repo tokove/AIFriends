@@ -19,7 +19,7 @@ type FriendRepository interface {
 	SaveMessageTx(ctx context.Context, msg *model.Message) error
 	GetMessageCount(ctx context.Context, friendID uint) (int64, error)
 	UpdateFriendMemory(ctx context.Context, friendID uint, newMemory string) error
-	GetMessageHistory(ctx context.Context, friendID uint, lastMsgID uint, limit int) ([]*model.Message, error)
+	GetMessageHistory(ctx context.Context, friendID uint, cursor uint, limit int) ([]*model.Message, error)
 }
 
 type friendRepository struct {
@@ -188,13 +188,14 @@ func (r *friendRepository) UpdateFriendMemory(ctx context.Context, friendID uint
 	return r.db.WithContext(ctx).Model(&model.Friend{}).Where("id = ?", friendID).Update("memory", newMemory).Error
 }
 
-func (r *friendRepository) GetMessageHistory(ctx context.Context, friendID uint, lastMsgID uint, limit int) ([]*model.Message, error) {
+func (r *friendRepository) GetMessageHistory(ctx context.Context, friendID uint, cursor uint, limit int) ([]*model.Message, error) {
 	var msgs []*model.Message
-
-	query := r.db.WithContext(ctx).Where("friend_id = ?", friendID)
-	if lastMsgID > 0 {
-		query = query.Where("id < ?", lastMsgID)
+	q := r.db.WithContext(ctx).Where("friend_id = ?", friendID)
+	if cursor > 0 {
+		q = q.Where("id < ?", cursor)
 	}
-	err := query.Order("id DESC").Limit(limit).Find(&msgs).Error
-	return msgs, err
+	if err := q.Order("id DESC").Limit(limit).Find(&msgs).Error; err != nil {
+		return nil, err
+	}
+	return msgs, nil
 }

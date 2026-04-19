@@ -23,7 +23,7 @@ type FriendService interface {
 	SaveMessage(ctx context.Context, msg *model.Message) error
 	UpdateMemory(ctx context.Context, friendID uint) error
 	GetMessageCount(ctx context.Context, friendID uint) (int64, error)
-	GetMessageHistory(ctx context.Context, friendID, userID, lastMsgID uint, limit int) ([]*model.Message, error)
+	GetMessageHistory(ctx context.Context, friendID, userID, cursor uint, limit int) ([]*model.Message, error)
 }
 
 type friendService struct {
@@ -112,8 +112,16 @@ func (s *friendService) StreamChat(ctx context.Context, friendID, userID uint, u
 		return nil, "", errors.New("好友不存在")
 	}
 
-	// 组装 System Prompt
-	prompts, _ := s.repo.GetSystemPrompts(ctx, constants.SystemPromptTitleReply)
+	// 拼接 System Prompt
+	prompts, err := s.repo.GetSystemPrompts(ctx, constants.SystemPromptTitleReply)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			zap.L().Error("[friend service] GetSystemPrompts no exists", zap.Error(err))
+			return nil, "", errors.New("系统繁忙，请稍后再试")
+		}
+		zap.L().Error("[friend service] GetSystemPrompts db error", zap.Error(err))
+		return nil, "", errors.New("系统繁忙，请稍后再试")
+	}
 
 	var builder strings.Builder
 	builder.Grow(len(prompts) * 100)
@@ -229,7 +237,7 @@ func (s *friendService) GetMessageCount(ctx context.Context, friendID uint) (int
 	return count, nil
 }
 
-func (s *friendService) GetMessageHistory(ctx context.Context, friendID, userID, lastMsgID uint, limit int) ([]*model.Message, error) {
+func (s *friendService) GetMessageHistory(ctx context.Context, friendID, userID, cursor uint, limit int) ([]*model.Message, error) {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -243,7 +251,7 @@ func (s *friendService) GetMessageHistory(ctx context.Context, friendID, userID,
 		return nil, errors.New("好友不存在")
 	}
 
-	msgs, err := s.repo.GetMessageHistory(ctx, friendID, lastMsgID, limit)
+	msgs, err := s.repo.GetMessageHistory(ctx, friendID, cursor, limit)
 	if err != nil {
 		zap.L().Error("[friend service] GetMessageHistory db error", zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")
