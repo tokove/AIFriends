@@ -1,4 +1,4 @@
-package friend
+package graph
 
 import (
 	"context"
@@ -26,17 +26,17 @@ func NewMemoryGraph(ctx context.Context, llm model.ToolCallingChatModel) (compos
 		return nil, fmt.Errorf("添加 extract_messages 节点失败: %w", err)
 	}
 
-	if err := g.AddChatModelNode("llm", llm); err != nil {
-		return nil, fmt.Errorf("添加 llm 节点失败: %w", err)
+	if err := g.AddChatModelNode("agent", llm); err != nil {
+		return nil, fmt.Errorf("添加 agent 节点失败: %w", err)
 	}
 	if err := g.AddEdge(compose.START, "extract_messages"); err != nil {
 		return nil, fmt.Errorf("添加 START->extract 边失败: %w", err)
 	}
-	if err := g.AddEdge("extract_messages", "llm"); err != nil {
-		return nil, fmt.Errorf("添加 extract->llm 边失败: %w", err)
+	if err := g.AddEdge("extract_messages", "agent"); err != nil {
+		return nil, fmt.Errorf("添加 extract->agent 边失败: %w", err)
 	}
-	if err := g.AddEdge("llm", compose.END); err != nil {
-		return nil, fmt.Errorf("添加 llm->END 边失败: %w", err)
+	if err := g.AddEdge("agent", compose.END); err != nil {
+		return nil, fmt.Errorf("添加 agent->END 边失败: %w", err)
 	}
 
 	runnable, err := g.Compile(ctx)

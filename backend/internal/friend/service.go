@@ -1,6 +1,7 @@
 package friend
 
 import (
+	"backend/internal/friend/agent/graph"
 	"backend/internal/model"
 	"backend/pkg/constants"
 	"context"
@@ -28,11 +29,11 @@ type FriendService interface {
 
 type friendService struct {
 	repo        FriendRepository
-	chatGraph   compose.Runnable[ChatState, *schema.Message]
-	memoryGraph compose.Runnable[MemoryState, *schema.Message]
+	chatGraph   compose.Runnable[graph.ChatState, *schema.Message]
+	memoryGraph compose.Runnable[graph.MemoryState, *schema.Message]
 }
 
-func NewFriendService(repo FriendRepository, chatGraph compose.Runnable[ChatState, *schema.Message], memoryGraph compose.Runnable[MemoryState, *schema.Message]) FriendService {
+func NewFriendService(repo FriendRepository, chatGraph compose.Runnable[graph.ChatState, *schema.Message], memoryGraph compose.Runnable[graph.MemoryState, *schema.Message]) FriendService {
 	return &friendService{
 		repo:        repo,
 		chatGraph:   chatGraph,
@@ -98,7 +99,11 @@ func (s *friendService) SaveMessage(ctx context.Context, msg *model.Message) err
 	return nil
 }
 
-func (s *friendService) StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error) {
+func (s *friendService) StreamChat(
+	ctx context.Context,
+	friendID, userID uint,
+	userMsg string,
+) (*schema.StreamReader[*schema.Message], string, error) {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -176,7 +181,7 @@ func (s *friendService) StreamChat(ctx context.Context, friendID, userID uint, u
 		inputStr = inputStr[:constants.MaxDBInputLength]
 	}
 
-	state := ChatState{
+	state := graph.ChatState{
 		Messages: messages,
 	}
 	stream, err := s.chatGraph.Stream(ctx, state)
@@ -211,7 +216,7 @@ func (s *friendService) UpdateMemory(ctx context.Context, friendID uint) error {
 		messages = append(messages, schema.AssistantMessage(m.Output, nil))
 	}
 
-	state := MemoryState{Messages: messages}
+	state := graph.MemoryState{Messages: messages}
 	outMsg, err := s.memoryGraph.Invoke(ctx, state)
 	if err != nil {
 		return err

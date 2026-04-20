@@ -58,10 +58,10 @@ func UploadFile(userID uint, file *multipart.FileHeader, subDir string) (string,
 
 	// 2. 构造存储路径
 	// 数据库存这个: user/photos/1_abc1234567.jpg
-	// 物理路径: data/user/photos/1_abc1234567.jpg
-	fullPath := filepath.Join("data", relPath)
+	// 物理路径: media/user/photos/1_abc1234567.jpg
+	fullPath := filepath.Join("media", relPath)
 
-	// 3. 确保目录存在 (mkdir -p ./data/user/photos)
+	// 3. 确保目录存在 (mkdir -p ./media/user/photos)
 	if err := os.MkdirAll(filepath.Dir(fullPath), os.ModePerm); err != nil {
 		return "", err
 	}
@@ -103,4 +103,41 @@ func RemoveFile(relPath string) error {
 		return os.Remove(fullPath)
 	}
 	return nil
+}
+
+func SplitText(text string, chunkSize int, overlap int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+
+	if chunkSize <= 0 {
+		return []string{text}
+	}
+	if overlap >= chunkSize {
+		overlap = chunkSize - 1
+	}
+
+	runes := []rune(text)
+	totalLen := len(runes)
+	var chunks []string
+
+	if totalLen <= chunkSize {
+		return []string{text}
+	}
+
+	step := chunkSize - overlap
+
+	for i := 0; i < totalLen; i += step {
+		end := i + chunkSize
+		end = min(end, totalLen)
+
+		chunks = append(chunks, string(runes[i:end]))
+
+		if end == totalLen {
+			break
+		}
+	}
+
+	return chunks
 }

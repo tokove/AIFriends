@@ -7,6 +7,7 @@ import (
 	"backend/internal/infra/redis"
 	"backend/internal/router"
 	"backend/internal/task"
+	"backend/pkg/constants"
 	"context"
 	"fmt"
 	"log"
@@ -17,13 +18,9 @@ import (
 	"time"
 )
 
-const (
-	path = "./configs/config.yaml"
-)
-
 func main() {
 	// init config
-	cfg := config.LoadConfig(path)
+	cfg := config.LoadConfig(constants.DefaultPath)
 
 	// init logger
 	logger.InitLogger(cfg)

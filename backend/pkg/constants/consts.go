@@ -13,9 +13,10 @@ const (
 
 	// 文件相关
 	MaxFileSize   = 2 * 1024 * 1024 // 2MB
-	StaticBaseURL = "/api/data/"
+	StaticBaseURL = "/api/media/"
 
 	// 默认路径
+	DefaultPath                 = "./configs/config.yaml"
 	DefaultUserPhoto            = "user/photos/default.jpg"
 	DirUserPhoto                = "user/photos"
 	DirCharacterPhoto           = "character/photos"

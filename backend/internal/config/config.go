@@ -51,10 +51,11 @@ type RedisConfig struct {
 	PoolSize int    `mapstructure:"pool_size"`
 }
 
-type AIConfig struct {
-	APIKey  string
-	BaseURL string
-	Model   string
+type AgentConfig struct {
+	APIKey     string
+	BaseURL    string
+	LLMModel   string
+	EmbedModel string
 }
 
 type Config struct {
@@ -64,7 +65,7 @@ type Config struct {
 	Log    LogConfig    `mapstructure:"log"`
 	JWT    JwtConfig    `mapstructure:"jwt"`
 	Redis  RedisConfig  `mapstructure:"redis"`
-	AI     AIConfig
+	Agent  AgentConfig
 }
 
 // LoadConfig 使用 Viper 读取 YAML + .env
@@ -87,9 +88,10 @@ func LoadConfig(path string) *Config {
 	cfg.DB.User = os.Getenv("DB_USER")
 	cfg.DB.Password = os.Getenv("DB_PASSWORD")
 	cfg.JWT.Secret = os.Getenv("JWT_SECRET")
-	cfg.AI.APIKey = os.Getenv("API_KEY")
-	cfg.AI.BaseURL = os.Getenv("BASE_URL")
-	cfg.AI.Model = os.Getenv("MODEL_NAME")
+	cfg.Agent.APIKey = os.Getenv("API_KEY")
+	cfg.Agent.BaseURL = os.Getenv("BASE_URL")
+	cfg.Agent.LLMModel = os.Getenv("LLM_MODEL")
+	cfg.Agent.EmbedModel = os.Getenv("EMBED_MODEL")
 
 	return cfg
 }

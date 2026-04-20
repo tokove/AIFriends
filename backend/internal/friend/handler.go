@@ -170,7 +170,8 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream") // 设置响应头为 SSE
 	c.Writer.Header().Set("Cache-Control", "no-cache")         // 禁止缓存 -> nginx
-	c.Writer.Header().Set("Connection", "keep-alive")          // 保持长连接获取信息
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Header().Set("Connection", "keep-alive") // 保持长连接获取信息
 	c.Writer.Flush()
 
 	var finalOutput string
@@ -245,9 +246,14 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 			return false
 		}
 
+		// 跳过空字符，直接读取下一个流
+		if msg.Content == "" {
+			return true
+		}
+
 		// 正常拼接输出
 		finalOutput += msg.Content
-		fmt.Println(msg.Content)
+		fmt.Print(msg.Content)
 
 		if msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
 			inputTokens = msg.ResponseMeta.Usage.PromptTokens

@@ -4,6 +4,9 @@ import (
 	"backend/internal/character"
 	"backend/internal/config"
 	"backend/internal/friend"
+	"backend/internal/friend/agent/graph"
+	"backend/internal/friend/agent/tool"
+	"backend/internal/infra/db"
 	"backend/internal/infra/llm"
 	"backend/internal/infra/logger"
 	"backend/internal/middleware"
@@ -17,7 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client) *gin.Engine {
+func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Client) *gin.Engine {
 	if mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -28,28 +31,34 @@ func SetupRouter(mode string, db *gorm.DB, cfg *config.Config, rdb *redis.Client
 	r.Use(middleware.CorsMiddleware())
 	r.Static("/api/data", "./data")
 
-	userRepo := user.NewUserRepository(db)
+	userRepo := user.NewUserRepository(basedb)
 	userSvc := user.NewUserService(userRepo)
 	userHdl := user.NewUserHandler(userSvc, &cfg.JWT, rdb)
 
-	charRepo := character.NewCharRepository(db)
+	charRepo := character.NewCharRepository(basedb)
 	charSvc := character.NewCharService(charRepo)
 	charHdl := character.NewCharHandler(charSvc)
 
 	ctx := context.Background()
-	chatModel, err := llm.InitChatModel(ctx, cfg.AI)
+	chatModel, err := llm.InitChatModel(ctx, cfg.Agent)
 	if err != nil {
 		zap.L().Panic("InitChatModel error:", zap.Error(err))
 	}
-	chatGraph, err := friend.NewChatGraph(ctx, chatModel)
+	embedModel, err := llm.NewDefaultEmbedder(cfg.Agent)
+	if err != nil {
+		zap.L().Panic("NewDefaultEmbedder error:", zap.Error(err))
+	}
+	vectordb := db.NewVectorDB(basedb, embedModel)
+	tools := tool.InitTools(vectordb)
+	chatGraph, err := graph.NewChatGraph(ctx, chatModel, tools)
 	if err != nil {
 		zap.L().Panic("NewChatGraph error:", zap.Error(err))
 	}
-	memoryGraph, err := friend.NewMemoryGraph(ctx, chatModel)
+	memoryGraph, err := graph.NewMemoryGraph(ctx, chatModel)
 	if err != nil {
 		zap.L().Panic("NewMemoryGraph error:", zap.Error(err))
 	}
-	friendRepo := friend.NewFriendRepository(db)
+	friendRepo := friend.NewFriendRepository(basedb)
 	friendSvc := friend.NewFriendService(friendRepo, chatGraph, memoryGraph)
 	friendHdl := friend.NewFriendHandler(friendSvc)
 
