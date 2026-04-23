@@ -31,11 +31,11 @@ const (
 	SystemPromptTitleReply  = "回复"
 	SystemPromptTitleMemory = "记忆"
 
-	MaxChatHistoryCount   = 20
+	MaxChatHistoryCount   = 12
 	MaxMemorySummaryCount = 20
 	MaxMsgLen             = 500
-	MaxContextLength      = 4000
-	MaxDBInputLength      = 10000
+	MaxContextLength      = 2200
+	MaxDBInputLength      = 6000
 
 	MarkdownJSONPrefix = "```json\n"
 	MarkdownPrefix     = "```\n"

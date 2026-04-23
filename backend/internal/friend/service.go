@@ -127,6 +127,10 @@ func (s *friendService) StreamChat(
 		zap.L().Error("[friend service] GetSystemPrompts db error", zap.Error(err))
 		return nil, "", errors.New("系统繁忙，请稍后再试")
 	}
+	if len(prompts) == 0 {
+		zap.L().Error("[friend service] reply system prompts is empty")
+		return nil, "", errors.New("系统繁忙，请稍后再试")
+	}
 
 	var builder strings.Builder
 	builder.Grow(len(prompts) * 100)
@@ -146,7 +150,11 @@ func (s *friendService) StreamChat(
 		schema.SystemMessage(finalSystemPrompt),
 	}
 
-	recentMsgs, _ := s.repo.GetRecentMessages(ctx, friendID, constants.MaxChatHistoryCount)
+	recentMsgs, err := s.repo.GetRecentMessages(ctx, friendID, constants.MaxChatHistoryCount)
+	if err != nil {
+		zap.L().Error("[friend service] GetRecentMessages db error", zap.Error(err), zap.Uint("friendID", friendID))
+		return nil, "", errors.New("系统繁忙，请稍后再试")
+	}
 
 	currentLength := 0
 
@@ -175,7 +183,11 @@ func (s *friendService) StreamChat(
 	messages = append(messages, schema.UserMessage(userMsg))
 
 	// 序列化 Input 给后续存数据库用
-	inputBytes, _ := json.Marshal(messages)
+	inputBytes, err := json.Marshal(messages)
+	if err != nil {
+		zap.L().Error("[friend service] marshal input messages failed", zap.Error(err))
+		return nil, "", errors.New("系统繁忙，请稍后再试")
+	}
 	inputStr := string(inputBytes)
 	if len(inputStr) > constants.MaxDBInputLength { // 截断防爆
 		inputStr = inputStr[:constants.MaxDBInputLength]
@@ -185,6 +197,10 @@ func (s *friendService) StreamChat(
 		Messages: messages,
 	}
 	stream, err := s.chatGraph.Stream(ctx, state)
+	if err != nil {
+		zap.L().Error("[friend service] chat graph stream failed", zap.Error(err), zap.Uint("friendID", friendID))
+		return nil, "", errors.New("系统繁忙，请稍后再试")
+	}
 
 	return stream, inputStr, err
 }
@@ -192,17 +208,31 @@ func (s *friendService) StreamChat(
 func (s *friendService) UpdateMemory(ctx context.Context, friendID uint) error {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
-		return err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("好友不存在")
+		}
+		zap.L().Error("[friend service] GetByID db error in UpdateMemory", zap.Error(err), zap.Uint("friendID", friendID))
+		return errors.New("系统繁忙，请稍后再试")
 	}
-	recentMsgs, _ := s.repo.GetRecentMessages(ctx, friendID, constants.MaxMemorySummaryCount)
+
+	recentMsgs, err := s.repo.GetRecentMessages(ctx, friendID, constants.MaxMemorySummaryCount)
+	if err != nil {
+		zap.L().Error("[friend service] GetRecentMessages db error in UpdateMemory", zap.Error(err), zap.Uint("friendID", friendID))
+		return errors.New("系统繁忙，请稍后再试")
+	}
 	if len(recentMsgs) == 0 {
 		return nil
 	}
 
 	// "记忆"系统提示词
-	prompts, _ := s.repo.GetSystemPrompts(ctx, constants.SystemPromptTitleMemory)
+	prompts, err := s.repo.GetSystemPrompts(ctx, constants.SystemPromptTitleMemory)
+	if err != nil {
+		zap.L().Error("[friend service] GetSystemPrompts db error in UpdateMemory", zap.Error(err))
+		return errors.New("系统繁忙，请稍后再试")
+	}
 	if len(prompts) == 0 {
-		return errors.New("未找到记忆提取的 System Prompt")
+		zap.L().Error("[friend service] memory system prompts is empty")
+		return errors.New("系统繁忙，请稍后再试")
 	}
 
 	// 组装输入上下文
@@ -219,7 +249,12 @@ func (s *friendService) UpdateMemory(ctx context.Context, friendID uint) error {
 	state := graph.MemoryState{Messages: messages}
 	outMsg, err := s.memoryGraph.Invoke(ctx, state)
 	if err != nil {
-		return err
+		zap.L().Error("[friend service] memory graph invoke failed", zap.Error(err), zap.Uint("friendID", friendID))
+		return errors.New("系统繁忙，请稍后再试")
+	}
+	if outMsg == nil {
+		zap.L().Error("[friend service] memory graph output is nil", zap.Uint("friendID", friendID))
+		return errors.New("系统繁忙，请稍后再试")
 	}
 
 	// 清理大模型吐出的 Markdown 代码块符号 (比如 ```json ... ```)

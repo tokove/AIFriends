@@ -28,8 +28,9 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	// 配置日志和错误恢复
 	r.Use(logger.GinLogger(), logger.GinRecovery(true))
 	// 跨域中间件
-	r.Use(middleware.CorsMiddleware())
-	r.Static("/api/data", "./data")
+	r.Use(middleware.CorsMiddleware(cfg.Cors))
+	r.Static("/api/media", "./media")
+	r.Static("/api/data", "./media")
 
 	userRepo := user.NewUserRepository(basedb)
 	userSvc := user.NewUserService(userRepo)

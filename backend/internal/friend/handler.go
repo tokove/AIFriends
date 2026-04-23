@@ -5,7 +5,6 @@ import (
 	"backend/pkg/constants"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,6 +19,21 @@ type friendHandler struct {
 
 func NewFriendHandler(svc FriendService) *friendHandler {
 	return &friendHandler{svc: svc}
+}
+
+func friendErrorStatus(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+
+	switch err.Error() {
+	case "好友不存在":
+		return http.StatusNotFound
+	case "系统繁忙，请稍后再试":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (h *friendHandler) buildFriendResp(f *model.Friend) (FriendResp, bool) {
@@ -50,33 +64,26 @@ func (h *friendHandler) GetOrCreate(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[friend handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	var req GetOrCreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	friend, err := h.svc.GetOrCreate(c.Request.Context(), req.CharacterID, userID)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
-	}
-	fmt.Println(friend)
-	if friend != nil {
-		fmt.Println(friend.Character)
-		if friend.Character != nil {
-			fmt.Println(friend.Character.Author)
-		}
 	}
 
 	friendResp, ok := h.buildFriendResp(friend)
 	if !ok {
 		zap.L().Debug("[friend handler] buildFriendResp error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusInternalServerError, gin.H{"result": "系统繁忙，请稍后再试"})
 		return
 	}
 
@@ -91,19 +98,23 @@ func (h *friendHandler) GetFriendList(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[friend handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	itemsCountStr := c.DefaultQuery("items_count", "0")
-	itemsCount, _ := strconv.Atoi(itemsCountStr)
+	itemsCount, err := strconv.Atoi(itemsCountStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+		return
+	}
 	if itemsCount < 0 {
 		itemsCount = 0
 	}
 
 	rawFriends, err := h.svc.GetList(c.Request.Context(), userID, int(itemsCount))
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -127,18 +138,18 @@ func (h *friendHandler) RemoveFriend(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[friend handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	var req RemoveReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	if err := h.svc.RemoveFriend(c.Request.Context(), req.FriendID, userID); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -150,20 +161,20 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[friend handler] userID type error in StreamChat")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	var req ChatReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	// 获取流和输入
 	stream, inputStr, err := h.svc.StreamChat(c.Request.Context(), req.FriendID, userID, req.Message)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 	defer stream.Close() // 关流
@@ -186,7 +197,7 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return str
 	}
 
-	// 保存消息并检查是否更新记忆，每10条更新一次记忆
+	// 保存消息并检查是否更新记忆（当前按每 2 条触发一次）
 	saveAndUpdateMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) {
 		saveCtx := context.Background()
 
@@ -224,7 +235,6 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 		// 正常结束
 		if err == io.EOF {
-			fmt.Println("\n[流式输出结束]")
 			c.SSEvent("message", "[DONE]")
 			go saveAndUpdateMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
 			return false
@@ -253,7 +263,6 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 		// 正常拼接输出
 		finalOutput += msg.Content
-		fmt.Print(msg.Content)
 
 		if msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
 			inputTokens = msg.ResponseMeta.Usage.PromptTokens
@@ -272,7 +281,7 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[friend handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
@@ -281,7 +290,7 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 
 	friendID, err := strconv.ParseUint(friendIDStr, 10, 32)
 	if err != nil || friendID == 0 {
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 	cursor, err := strconv.ParseUint(cursorStr, 10, 32)
@@ -291,7 +300,7 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 
 	msgs, err := h.svc.GetMessageHistory(c.Request.Context(), uint(friendID), userID, uint(cursor), constants.DefaultLimit+1)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 

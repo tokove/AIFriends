@@ -43,6 +43,37 @@ func (h *userHandler) formatUserResponse(user *model.User) gin.H {
 	}
 }
 
+func isSecureRequest(c *gin.Context) bool {
+	if c.Request != nil && c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
+func userErrorStatus(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+
+	msg := err.Error()
+	switch {
+	case msg == "用户名已存在":
+		return http.StatusConflict
+	case msg == "用户名或密码错误":
+		return http.StatusUnauthorized
+	case msg == "用户不存在":
+		return http.StatusNotFound
+	case msg == "用户名和密码不能为空":
+		return http.StatusBadRequest
+	case strings.HasPrefix(msg, "用户名长度需在"):
+		return http.StatusBadRequest
+	case strings.HasPrefix(msg, "简介太长了"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 func (h *userHandler) Register(c *gin.Context) {
 	var req RegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,7 +83,7 @@ func (h *userHandler) Register(c *gin.Context) {
 
 	user, err := h.svc.Register(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(userErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -62,8 +93,9 @@ func (h *userHandler) Register(c *gin.Context) {
 		return
 	}
 
+	secure := isSecureRequest(c)
 	// 参数：name, value, maxAge, path, domain, secure, httpOnly
-	c.SetCookie("refresh_token", refresh, h.jwt.RefreshExp, "/", "", true, true)
+	c.SetCookie("refresh_token", refresh, h.jwt.RefreshExp, "/", "", secure, true)
 
 	resp := h.formatUserResponse(user)
 	resp["result"] = "success"
@@ -80,7 +112,7 @@ func (h *userHandler) Login(c *gin.Context) {
 
 	user, err := h.svc.Login(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(userErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -90,8 +122,9 @@ func (h *userHandler) Login(c *gin.Context) {
 		return
 	}
 
+	secure := isSecureRequest(c)
 	// 参数：name, value, maxAge, path, domain, secure, httpOnly
-	c.SetCookie("refresh_token", refresh, h.jwt.RefreshExp, "/", "", true, true)
+	c.SetCookie("refresh_token", refresh, h.jwt.RefreshExp, "/", "", secure, true)
 
 	resp := h.formatUserResponse(user)
 	resp["result"] = "success"
@@ -111,7 +144,8 @@ func (h *userHandler) Logout(c *gin.Context) {
 		}
 	}
 
-	c.SetCookie("refresh_token", "", -1, "/", "", true, true)
+	secure := isSecureRequest(c)
+	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
 	c.JSON(http.StatusOK, gin.H{"result": "success"})
 }
 
@@ -130,11 +164,12 @@ func (h *userHandler) RefreshToken(c *gin.Context) {
 
 	newAccess, newRefresh, err := utils.GenerateToken(claims.UserID, h.jwt)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"result": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"result": "生成令牌失败"})
 		return
 	}
 
-	c.SetCookie("refresh_token", newRefresh, h.jwt.RefreshExp, "/", "", true, true)
+	secure := isSecureRequest(c)
+	c.SetCookie("refresh_token", newRefresh, h.jwt.RefreshExp, "/", "", secure, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"result": "success",
@@ -147,13 +182,13 @@ func (h *userHandler) GetUserInfo(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[user handler] userID类型错误")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	user, err := h.svc.GetUserInfo(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(userErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -167,7 +202,7 @@ func (h *userHandler) UpdateProfile(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[user handler] userID类型错误")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
@@ -177,7 +212,7 @@ func (h *userHandler) UpdateProfile(c *gin.Context) {
 	photo, err := c.FormFile("photo")
 	if err != nil {
 		if !errors.Is(err, http.ErrMissingFile) {
-			c.JSON(http.StatusOK, gin.H{"result": "图片数据异常"})
+			c.JSON(http.StatusBadRequest, gin.H{"result": "图片数据异常"})
 			return
 		}
 		photo = nil
@@ -185,14 +220,14 @@ func (h *userHandler) UpdateProfile(c *gin.Context) {
 
 	if photo != nil {
 		if err := utils.CheckImage(photo); err != nil {
-			c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"result": err.Error()})
 			return
 		}
 	}
 
 	user, err := h.svc.UpdateProfile(c.Request.Context(), userID, username, profile, photo)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(userErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 

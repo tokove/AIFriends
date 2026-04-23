@@ -1,7 +1,6 @@
 package character
 
 import (
-	"backend/internal/model"
 	"backend/pkg/constants"
 	"backend/pkg/utils"
 	"errors"
@@ -22,12 +21,46 @@ func NewCharHandler(svc CharService) *charHandler {
 	return &charHandler{svc: svc}
 }
 
+func charErrorStatus(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+
+	msg := err.Error()
+	switch {
+	case msg == "角色不存在":
+		return http.StatusNotFound
+	case msg == "用户不存在":
+		return http.StatusNotFound
+	case msg == "介绍不能为空":
+		return http.StatusBadRequest
+	case strings.HasPrefix(msg, "名字长度需在"):
+		return http.StatusBadRequest
+	case strings.HasPrefix(msg, "介绍太长了"):
+		return http.StatusBadRequest
+	case msg == "头像上传失败":
+		return http.StatusInternalServerError
+	case msg == "背景图片上传失败":
+		return http.StatusInternalServerError
+	case msg == "新头像上传失败":
+		return http.StatusInternalServerError
+	case msg == "新背景图片上传失败":
+		return http.StatusInternalServerError
+	case msg == "更新失败，请稍后再试":
+		return http.StatusInternalServerError
+	case msg == "系统繁忙，请稍后再试":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 func (h *charHandler) CreateChar(c *gin.Context) {
 	uid, _ := c.Get("user_id")
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[char handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
@@ -36,26 +69,26 @@ func (h *charHandler) CreateChar(c *gin.Context) {
 
 	photo, err := c.FormFile("photo")
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "请上传角色头像"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "请上传角色头像"})
 		return
 	}
 	if err := utils.CheckImage(photo); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"result": err.Error()})
 		return
 	}
 
 	bg, err := c.FormFile("background_image")
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "请上传角色背景图片"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "请上传角色背景图片"})
 		return
 	}
 	if err := utils.CheckImage(bg); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"result": err.Error()})
 		return
 	}
 
 	if err := h.svc.CreateChar(c.Request.Context(), userID, name, profile, photo, bg); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -67,7 +100,7 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[char handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
@@ -75,7 +108,7 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 	charID, err := strconv.ParseUint(cid, 10, 64)
 	if err != nil {
 		zap.L().Error("[char handler] charID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
@@ -85,14 +118,14 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 	photo, err := c.FormFile("photo")
 	if err != nil {
 		if !errors.Is(err, http.ErrMissingFile) {
-			c.JSON(http.StatusOK, gin.H{"result": "图片数据异常"})
+			c.JSON(http.StatusBadRequest, gin.H{"result": "图片数据异常"})
 			return
 		}
 		photo = nil
 	}
 	if photo != nil {
 		if err := utils.CheckImage(photo); err != nil {
-			c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"result": err.Error()})
 			return
 		}
 	}
@@ -100,20 +133,20 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 	bg, err := c.FormFile("background_image")
 	if err != nil {
 		if !errors.Is(err, http.ErrMissingFile) {
-			c.JSON(http.StatusOK, gin.H{"result": "图片数据异常"})
+			c.JSON(http.StatusBadRequest, gin.H{"result": "图片数据异常"})
 			return
 		}
 		bg = nil
 	}
 	if bg != nil {
 		if err := utils.CheckImage(bg); err != nil {
-			c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"result": err.Error()})
 			return
 		}
 	}
 
 	if err := h.svc.UpdateChar(c.Request.Context(), userID, uint(charID), name, profile, photo, bg); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -125,18 +158,18 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 	charID, err := strconv.ParseUint(charIDStr, 10, 64)
 	if err != nil {
 		zap.L().Error("[char handler] ParseUint error", zap.Error(err))
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 	if charID == 0 {
 		zap.L().Error("[char handler] charID value is zero")
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	char, err := h.svc.GetCharSingle(c.Request.Context(), uint(charID))
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -153,49 +186,68 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
 		zap.L().Error("[char handler] ParseUint error", zap.Error(err))
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 	if userID == 0 {
 		zap.L().Error("[char handler] userID value is zero")
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	itemsCount, err := strconv.ParseInt(itemsCountStr, 10, 64)
 	if err != nil {
 		zap.L().Error("[char handler] ParseInt error", zap.Error(err))
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	if itemsCount < 0 {
 		itemsCount = 0
 	}
-	rawChars, err := h.svc.GetUserChars(c.Request.Context(), uint(userID), int(itemsCount))
+
+	profileUser, err := h.svc.GetUserProfile(c.Request.Context(), uint(userID))
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
-	var author *model.User
-	if len(rawChars) > 0 {
-		author = rawChars[0].Author
+	rawChars, err := h.svc.GetUserChars(c.Request.Context(), uint(userID), int(itemsCount))
+	if err != nil {
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
+		return
 	}
+
 	user := UserProfileResp{
-		UserID:   uint(userID),
-		Username: author.Username,
-		Profile:  author.Profile,
-		Photo:    constants.StaticBaseURL + author.Photo,
+		UserID:   profileUser.ID,
+		Username: profileUser.Username,
+		Profile:  profileUser.Profile,
+		Photo:    constants.StaticBaseURL + profileUser.Photo,
+	}
+
+	fallbackAuthor := &AuthorInfoResp{
+		UserID:   profileUser.ID,
+		Username: profileUser.Username,
+		Photo:    constants.StaticBaseURL + profileUser.Photo,
 	}
 
 	chars := make([]CharacterItemResp, 0, len(rawChars))
 	for _, char := range rawChars {
-		authorInfo := AuthorInfoResp{
-			UserID:   author.ID,
-			Username: author.Username,
-			Photo:    constants.StaticBaseURL + author.Photo,
+		if char == nil {
+			continue
 		}
+
+		authorInfo := AuthorInfoResp{}
+		if char.Author != nil {
+			authorInfo = AuthorInfoResp{
+				UserID:   char.Author.ID,
+				Username: char.Author.Username,
+				Photo:    constants.StaticBaseURL + char.Author.Photo,
+			}
+		} else {
+			authorInfo = *fallbackAuthor
+		}
+
 		item := CharacterItemResp{
 			ID:              char.ID,
 			Name:            char.Name,
@@ -219,18 +271,18 @@ func (h *charHandler) DeleteChar(c *gin.Context) {
 	userID, ok := uid.(uint)
 	if !ok {
 		zap.L().Error("[char handler] userID type error")
-		c.JSON(http.StatusOK, gin.H{"result": "系统繁忙，请稍后再试"})
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
 		return
 	}
 
 	var req DeleteCharReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
 
 	if err := h.svc.DeleteChar(c.Request.Context(), userID, req.CharID); err != nil {
-		c.JSON(http.StatusOK, gin.H{"result": err.Error()})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 
@@ -247,25 +299,28 @@ func (h *charHandler) HomeOrSearch(c *gin.Context) {
 
 	if cursor != "" {
 		parts := strings.Split(cursor, "_")
-		if len(parts) == 2 {
-			cursorTime, err = strconv.ParseInt(parts[0], 10, 64)
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
-				return
-			}
-			id, err := strconv.ParseUint(parts[1], 10, 32)
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{"result": "参数格式错误"})
-				return
-			}
-			cursorID = uint(id)
+		if len(parts) != 2 {
+			c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+			return
 		}
+
+		cursorTime, err = strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+			return
+		}
+		id, err := strconv.ParseUint(parts[1], 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+			return
+		}
+		cursorID = uint(id)
 	}
 
 	chars, err := h.svc.HomeOrSearch(c.Request.Context(), query, cursorTime, cursorID, constants.DefaultLimit+1)
 	if err != nil {
 		zap.L().Error("[char handler] GetFeedOrSearch error", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "系统繁忙，请稍后再试"})
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
 

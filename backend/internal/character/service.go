@@ -19,6 +19,7 @@ type CharService interface {
 	CreateChar(ctx context.Context, authorID uint, name, profile string, photo, bg *multipart.FileHeader) error
 	UpdateChar(ctx context.Context, authorID, charID uint, name, profile string, photo, bg *multipart.FileHeader) error
 	GetCharSingle(ctx context.Context, charID uint) (*GetSingleResp, error)
+	GetUserProfile(ctx context.Context, userID uint) (*model.User, error)
 	GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error)
 	DeleteChar(ctx context.Context, authorID, charID uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
@@ -193,6 +194,18 @@ func (s *charService) GetCharSingle(ctx context.Context, charID uint) (*GetSingl
 		Photo:           constants.StaticBaseURL + char.Photo,
 		BackgroundImage: constants.StaticBaseURL + char.BackgroundImage,
 	}, nil
+}
+
+func (s *charService) GetUserProfile(ctx context.Context, userID uint) (*model.User, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		zap.L().Error("[char service] GetUserByID db error", zap.Uint("userID", userID), zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+	return user, nil
 }
 
 func (s *charService) GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error) {

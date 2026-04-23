@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	// 这里的 backend 替换为你 `go.mod` 里的实际 module 名称
 	"backend/internal/config"
 	"backend/internal/infra/db"
 	"backend/internal/infra/llm"
@@ -61,7 +60,7 @@ func main() {
 	fmt.Printf("文件读取成功，共切分为 %d 个文本块。开始请求大模型向量化...\n", len(chunks))
 
 	// 分批向量化并入库
-	batchSize := 20
+	batchSize := 10
 	var allDocs []*model.KnowledgeDoc
 
 	for i := 0; i < len(chunks); i += batchSize {

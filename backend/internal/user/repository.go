@@ -45,5 +45,5 @@ func (r *userRepository) GetByID(ctx context.Context, id uint) (*model.User, err
 }
 
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
-	return r.db.WithContext(ctx).Save(user).Error
+	return r.db.WithContext(ctx).Updates(user).Error
 }

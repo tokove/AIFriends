@@ -96,7 +96,7 @@ func RemoveFile(relPath string) error {
 		return nil
 	}
 
-	fullPath := filepath.Join("./data", relPath)
+	fullPath := filepath.Join("media", relPath)
 
 	// 2. 检查并删除
 	if _, err := os.Stat(fullPath); err == nil {

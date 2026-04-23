@@ -12,6 +12,7 @@ type CharRepository interface {
 	Create(ctx context.Context, char *model.Character) error
 	Update(ctx context.Context, char *model.Character) error
 	GetByID(ctx context.Context, id uint) (*model.Character, error)
+	GetUserByID(ctx context.Context, id uint) (*model.User, error)
 	GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
@@ -30,7 +31,7 @@ func (r *charRepository) Create(ctx context.Context, char *model.Character) erro
 }
 
 func (r *charRepository) Update(ctx context.Context, char *model.Character) error {
-	return r.db.WithContext(ctx).Save(char).Error
+	return r.db.WithContext(ctx).Updates(char).Error
 }
 
 func (r *charRepository) GetByID(ctx context.Context, id uint) (*model.Character, error) {
@@ -39,6 +40,14 @@ func (r *charRepository) GetByID(ctx context.Context, id uint) (*model.Character
 		return nil, err
 	}
 	return &char, nil
+}
+
+func (r *charRepository) GetUserByID(ctx context.Context, id uint) (*model.User, error) {
+	var user model.User
+	if err := r.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func (r *charRepository) GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error) {
@@ -68,7 +77,7 @@ func (r *charRepository) Delete(ctx context.Context, id uint) error {
 
 func (r *charRepository) HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error) {
 	var chars []*model.Character
-	q := r.db.Debug().WithContext(ctx)
+	q := r.db.WithContext(ctx).Preload("Author")
 
 	if query != "" {
 		like := "%" + query + "%"
