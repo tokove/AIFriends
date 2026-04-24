@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"go.uber.org/zap"
@@ -20,7 +21,7 @@ type CharService interface {
 	UpdateChar(ctx context.Context, authorID, charID uint, name, profile string, photo, bg *multipart.FileHeader) error
 	GetCharSingle(ctx context.Context, charID uint) (*GetSingleResp, error)
 	GetUserProfile(ctx context.Context, userID uint) (*model.User, error)
-	GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error)
+	GetUserChars(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Character, error)
 	DeleteChar(ctx context.Context, authorID, charID uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
 }
@@ -208,8 +209,8 @@ func (s *charService) GetUserProfile(ctx context.Context, userID uint) (*model.U
 	return user, nil
 }
 
-func (s *charService) GetUserChars(ctx context.Context, authorID uint, itemsCount int) ([]*model.Character, error) {
-	chars, err := s.repo.GetList(ctx, authorID, itemsCount, constants.DefaultLimit)
+func (s *charService) GetUserChars(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Character, error) {
+	chars, err := s.repo.GetList(ctx, authorID, cursorUpdatedAt, cursorID, constants.DefaultLimit)
 	if err != nil {
 		zap.L().Error("[char service] GetList db error", zap.Uint("userID", authorID), zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -181,7 +182,8 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 
 func (h *charHandler) GetCharList(c *gin.Context) {
 	userIDStr := c.Query("user_id")
-	itemsCountStr := c.DefaultQuery("items_count", "0")
+	cursorUpdatedAtStr := c.Query("cursor_updated_at")
+	cursorIDStr := c.DefaultQuery("cursor_id", "0")
 
 	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
@@ -195,15 +197,25 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 		return
 	}
 
-	itemsCount, err := strconv.ParseInt(itemsCountStr, 10, 64)
+	var cursorUpdatedAt *time.Time
+	if cursorUpdatedAtStr != "" {
+		cursorUpdatedAtUnix, err := strconv.ParseInt(cursorUpdatedAtStr, 10, 64)
+		if err != nil || cursorUpdatedAtUnix <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+			return
+		}
+		parsedTime := time.UnixMilli(cursorUpdatedAtUnix)
+		cursorUpdatedAt = &parsedTime
+	}
+
+	cursorID, err := strconv.ParseUint(cursorIDStr, 10, 64)
 	if err != nil {
-		zap.L().Error("[char handler] ParseInt error", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
-
-	if itemsCount < 0 {
-		itemsCount = 0
+	if cursorUpdatedAt != nil && cursorID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+		return
 	}
 
 	profileUser, err := h.svc.GetUserProfile(c.Request.Context(), uint(userID))
@@ -212,7 +224,7 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 		return
 	}
 
-	rawChars, err := h.svc.GetUserChars(c.Request.Context(), uint(userID), int(itemsCount))
+	rawChars, err := h.svc.GetUserChars(c.Request.Context(), uint(userID), cursorUpdatedAt, uint(cursorID))
 	if err != nil {
 		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
@@ -250,6 +262,7 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 
 		item := CharacterItemResp{
 			ID:              char.ID,
+			UpdatedAt:       char.UpdatedAt.UnixMilli(),
 			Name:            char.Name,
 			Profile:         char.Profile,
 			Photo:           constants.StaticBaseURL + char.Photo,

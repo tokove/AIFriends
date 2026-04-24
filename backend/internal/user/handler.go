@@ -67,6 +67,8 @@ func userErrorStatus(err error) int {
 		return http.StatusBadRequest
 	case strings.HasPrefix(msg, "用户名长度需在"):
 		return http.StatusBadRequest
+	case strings.HasPrefix(msg, "密码长度需在"):
+		return http.StatusBadRequest
 	case strings.HasPrefix(msg, "简介太长了"):
 		return http.StatusBadRequest
 	default:

@@ -20,6 +20,7 @@ type AuthorInfoResp struct {
 
 type CharacterItemResp struct {
 	ID              uint           `json:"id"`
+	UpdatedAt       int64          `json:"updated_at"`
 	Name            string         `json:"name"`
 	Profile         string         `json:"profile"`
 	Photo           string         `json:"photo"`

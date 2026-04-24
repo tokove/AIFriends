@@ -13,7 +13,7 @@ type CharRepository interface {
 	Update(ctx context.Context, char *model.Character) error
 	GetByID(ctx context.Context, id uint) (*model.Character, error)
 	GetUserByID(ctx context.Context, id uint) (*model.User, error)
-	GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error)
+	GetList(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
 }
@@ -50,12 +50,22 @@ func (r *charRepository) GetUserByID(ctx context.Context, id uint) (*model.User,
 	return &user, nil
 }
 
-func (r *charRepository) GetList(ctx context.Context, authorID uint, offset int, limit int) ([]*model.Character, error) {
+func (r *charRepository) GetList(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Character, error) {
 	var chars []*model.Character
-	if err := r.db.WithContext(ctx).Preload("Author").
-		Where("author_id = ?", authorID).
-		Order("created_at DESC").
-		Offset(offset).
+	query := r.db.WithContext(ctx).Preload("Author").
+		Where("author_id = ?", authorID)
+
+	if cursorUpdatedAt != nil {
+		query = query.Where(
+			"(updated_at < ?) OR (updated_at = ? AND id < ?)",
+			*cursorUpdatedAt,
+			*cursorUpdatedAt,
+			cursorID,
+		)
+	}
+
+	if err := query.
+		Order("updated_at DESC, id DESC").
 		Limit(limit).
 		Find(&chars).Error; err != nil {
 		return nil, err

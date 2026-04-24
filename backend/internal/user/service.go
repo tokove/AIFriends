@@ -33,12 +33,34 @@ func NewUserService(repo UserRepository) UserService {
 	return &userService{repo: repo}
 }
 
+func validateUsername(username string) error {
+	length := utf8.RuneCountInString(username)
+	if length < constants.MinUsernameLen || length > constants.MaxUsernameLen {
+		return fmt.Errorf("用户名长度需在 %d-%d 个字符之间", constants.MinUsernameLen, constants.MaxUsernameLen)
+	}
+	return nil
+}
+
+func validatePassword(password string) error {
+	length := utf8.RuneCountInString(password)
+	if length < constants.MinPasswordLen || length > constants.MaxPasswordLen {
+		return fmt.Errorf("密码长度需在 %d-%d 个字符之间", constants.MinPasswordLen, constants.MaxPasswordLen)
+	}
+	return nil
+}
+
 func (s *userService) Register(ctx context.Context, username, password string) (*model.User, error) {
 	username = strings.TrimSpace(username)
 	password = strings.TrimSpace(password)
 
 	if username == "" || password == "" {
 		return nil, errors.New("用户名和密码不能为空")
+	}
+	if err := validateUsername(username); err != nil {
+		return nil, err
+	}
+	if err := validatePassword(password); err != nil {
+		return nil, err
 	}
 
 	existingUser, err := s.repo.GetByUsername(ctx, username)
@@ -76,6 +98,12 @@ func (s *userService) Login(ctx context.Context, username, password string) (*mo
 
 	if username == "" || password == "" {
 		return nil, errors.New("用户名和密码不能为空")
+	}
+	if err := validateUsername(username); err != nil {
+		return nil, err
+	}
+	if err := validatePassword(password); err != nil {
+		return nil, err
 	}
 
 	user, err := s.repo.GetByUsername(ctx, username)

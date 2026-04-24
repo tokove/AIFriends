@@ -41,9 +41,11 @@ async function loadMore() {
 
   let newCharacters = []
   try {
+    const lastCharacter = characters.value.at(-1)
     const res = await api.get('/api/create/character/get_list/', {
       params: {
-        items_count: characters.value.length,
+        cursor_updated_at: lastCharacter?.updated_at,
+        cursor_id: lastCharacter?.id,
         user_id: route.params.user_id,
       }
     })
@@ -58,11 +60,15 @@ async function loadMore() {
     if (newCharacters.length === 0) {
       hasCharacters.value = false
     } else {
-      characters.value.push(...newCharacters)
+      const existingIds = new Set(characters.value.map(character => character.id))
+      const uniqueCharacters = newCharacters.filter(character => !existingIds.has(character.id))
+      characters.value.push(...uniqueCharacters)
       await nextTick()
 
-      if (checkSentinelVisible()) {
+      if (uniqueCharacters.length > 0 && checkSentinelVisible()) {
         await loadMore()
+      } else if (uniqueCharacters.length === 0) {
+        hasCharacters.value = false
       }
     }
   }
