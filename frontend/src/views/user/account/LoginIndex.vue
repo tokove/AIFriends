@@ -3,6 +3,7 @@ import {ref} from "vue";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 import {useRouter} from "vue-router";
+import {formRules, validatePassword, validateUsername} from "@/js/utils/validators.js";
 
 const username = ref('')
 const password = ref('')
@@ -13,14 +14,17 @@ const router = useRouter()
 
 async function handleLogin() {
   errorMessage.value = ''
-  if (!username.value.trim()) {
-    errorMessage.value = '用户名不能为空'
-  } else if (!password.value.trim()) {
-    errorMessage.value = '密码不能为空'
+  const usernameError = validateUsername(username.value)
+  const passwordError = validatePassword(password.value)
+
+  if (usernameError) {
+    errorMessage.value = usernameError
+  } else if (passwordError) {
+    errorMessage.value = passwordError
   } else {
     try {
       const res = await api.post('/api/user/account/login', {
-        username: username.value,
+        username: username.value.trim(),
         password: password.value
       })
       const data = res.data
@@ -44,10 +48,10 @@ async function handleLogin() {
   <div class="flex justify-center mt-30">
     <form @submit.prevent="handleLogin" class="fieldset bg-base-200 border-base-300 rounded-box w-xs border p-4">
       <label class="label">用户名</label>
-      <input v-model="username" type="text" class="input" placeholder="用户名" />
+      <input v-model.trim="username" type="text" class="input" placeholder="用户名" :maxlength="formRules.usernameMaxLength" />
 
       <label class="label">密码</label>
-      <input v-model="password" type="password" class="input" placeholder="密码" />
+      <input v-model="password" type="password" class="input" placeholder="密码" :maxlength="formRules.passwordMaxLength" />
 
       <p v-if="errorMessage" class="text-sm text-red-500 mt-1">{{ errorMessage }}</p>
 

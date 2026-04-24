@@ -4,6 +4,7 @@ import (
 	"backend/internal/model"
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -13,7 +14,7 @@ type FriendRepository interface {
 	GetByID(ctx context.Context, friendID uint) (*model.Friend, error)
 	AddFriend(ctx context.Context, friend *model.Friend) error
 	RemoveFriend(ctx context.Context, friendID uint) error
-	GetList(ctx context.Context, userID uint, offset int, limit int) ([]*model.Friend, error)
+	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Friend, error)
 	GetSystemPrompts(ctx context.Context, title string) ([]*model.SystemPrompt, error)
 	GetRecentMessages(ctx context.Context, friendID uint, limit int) ([]*model.Message, error)
 	SaveMessageTx(ctx context.Context, msg *model.Message) error
@@ -104,13 +105,23 @@ func (r *friendRepository) RemoveFriend(ctx context.Context, fid uint) error {
 	})
 }
 
-func (r *friendRepository) GetList(ctx context.Context, userID uint, offset int, limit int) ([]*model.Friend, error) {
+func (r *friendRepository) GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Friend, error) {
 	var friends []*model.Friend
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Preload("Character.Author").
-		Where("me_id = ?", userID).
-		Order("updated_at DESC").
-		Offset(offset).
+		Where("me_id = ?", userID)
+
+	if cursorUpdatedAt != nil {
+		query = query.Where(
+			"(updated_at < ?) OR (updated_at = ? AND id < ?)",
+			*cursorUpdatedAt,
+			*cursorUpdatedAt,
+			cursorID,
+		)
+	}
+
+	err := query.
+		Order("updated_at DESC, id DESC").
 		Limit(limit).
 		Find(&friends).Error
 

@@ -6,6 +6,7 @@ type GetOrCreateReq struct {
 
 type FriendResp struct {
 	ID        uint          `json:"id"`
+	UpdatedAt int64         `json:"updated_at"`
 	Character CharacterResp `json:"character"`
 }
 
@@ -38,4 +39,3 @@ type MessageResp struct {
 	UserMessage string `json:"user_message"`
 	Output      string `json:"output"`
 }
-

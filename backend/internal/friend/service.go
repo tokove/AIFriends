@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -18,7 +19,7 @@ import (
 
 type FriendService interface {
 	GetOrCreate(ctx context.Context, charID, userID uint) (*model.Friend, error)
-	GetList(ctx context.Context, userID uint, itemsCount int) ([]*model.Friend, error)
+	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Friend, error)
 	RemoveFriend(ctx context.Context, friendID, userID uint) error
 	StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error)
 	SaveMessage(ctx context.Context, msg *model.Message) error
@@ -61,8 +62,8 @@ func (s *friendService) GetOrCreate(ctx context.Context, charID, userID uint) (*
 	return f, nil
 }
 
-func (s *friendService) GetList(ctx context.Context, userID uint, itemsCount int) ([]*model.Friend, error) {
-	friends, err := s.repo.GetList(ctx, userID, itemsCount, constants.DefaultLimit)
+func (s *friendService) GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Friend, error) {
+	friends, err := s.repo.GetList(ctx, userID, cursorUpdatedAt, cursorID, constants.DefaultLimit)
 	if err != nil {
 		zap.L().Error("[friend service] GetList db error", zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")

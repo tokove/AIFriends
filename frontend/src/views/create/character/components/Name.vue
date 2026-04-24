@@ -1,5 +1,6 @@
 <script setup>
 import {ref, watch} from "vue";
+import {formRules} from "@/js/utils/validators.js";
 
 const props = defineProps(['name'])
 const myName = ref(props.name)
@@ -17,7 +18,7 @@ defineExpose({
   <div class="flex justify-center">
     <fieldset class="fieldset">
       <label class="label text-base">名字</label>
-      <input v-model="myName" type="text" class="input w-98" placeholder="名字">
+      <input v-model.trim="myName" type="text" class="input w-98" placeholder="名字" :maxlength="formRules.characterNameMaxLength">
     </fieldset>
   </div>
 </template>

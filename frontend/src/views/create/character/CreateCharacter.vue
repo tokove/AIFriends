@@ -8,6 +8,7 @@ import {base64ToFile} from "@/js/utils/base64_to_file.js";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 import {useRouter} from "vue-router";
+import {validateCharacterName, validateCharacterProfile} from "@/js/utils/validators.js";
 
 const photoRef = useTemplateRef('photo-ref')
 const nameRef = useTemplateRef('name-ref')
@@ -24,13 +25,15 @@ async function handleCreate() {
   const name = nameRef.value.myName?.trim()
   const profile = profileRef.value.myProfile?.trim()
   const backgroundImage = backgroundImageRef.value.myBackgroundImage
+  const nameError = validateCharacterName(name)
+  const profileError = validateCharacterProfile(profile)
 
   if (!photo) {
     errorMessage.value = '头像不能为空'
-  } else if (!name) {
-    errorMessage.value = '名字不能为空'
-  } else if (!profile) {
-    errorMessage.value = '角色介绍不能为空'
+  } else if (nameError) {
+    errorMessage.value = nameError
+  } else if (profileError) {
+    errorMessage.value = profileError
   } else if (!backgroundImage) {
     errorMessage.value = '聊天背景不能为空'
   } else {

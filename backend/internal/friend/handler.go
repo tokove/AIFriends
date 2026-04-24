@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -43,7 +44,8 @@ func (h *friendHandler) buildFriendResp(f *model.Friend) (FriendResp, bool) {
 	char := f.Character
 	author := char.Author
 	return FriendResp{
-		ID: f.ID,
+		ID:        f.ID,
+		UpdatedAt: f.UpdatedAt.UnixMilli(),
 		Character: CharacterResp{
 			ID:      char.ID,
 			Name:    char.Name,
@@ -102,17 +104,31 @@ func (h *friendHandler) GetFriendList(c *gin.Context) {
 		return
 	}
 
-	itemsCountStr := c.DefaultQuery("items_count", "0")
-	itemsCount, err := strconv.Atoi(itemsCountStr)
+	cursorUpdatedAtStr := c.Query("cursor_updated_at")
+	cursorIDStr := c.DefaultQuery("cursor_id", "0")
+
+	var cursorUpdatedAt *time.Time
+	if cursorUpdatedAtStr != "" {
+		cursorUpdatedAtUnix, err := strconv.ParseInt(cursorUpdatedAtStr, 10, 64)
+		if err != nil || cursorUpdatedAtUnix <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+			return
+		}
+		parsedTime := time.UnixMilli(cursorUpdatedAtUnix)
+		cursorUpdatedAt = &parsedTime
+	}
+
+	cursorID, err := strconv.ParseUint(cursorIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
 		return
 	}
-	if itemsCount < 0 {
-		itemsCount = 0
+	if cursorUpdatedAt != nil && cursorID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+		return
 	}
 
-	rawFriends, err := h.svc.GetList(c.Request.Context(), userID, int(itemsCount))
+	rawFriends, err := h.svc.GetList(c.Request.Context(), userID, cursorUpdatedAt, uint(cursorID))
 	if err != nil {
 		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return

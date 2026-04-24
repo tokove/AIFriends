@@ -13,6 +13,10 @@ import (
 	"backend/internal/user"
 	"backend/pkg/constants"
 	"context"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -21,6 +25,9 @@ import (
 )
 
 func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Client) *gin.Engine {
+	const frontendDistDir = "./static/frontend"
+	const frontendIndexFile = "./static/frontend/index.html"
+
 	if mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -31,6 +38,9 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	r.Use(middleware.CorsMiddleware(cfg.Cors))
 	r.Static("/api/media", "./media")
 	r.Static("/api/data", "./media")
+	r.GET("/", func(c *gin.Context) {
+		c.File(frontendIndexFile)
+	})
 
 	userRepo := user.NewUserRepository(basedb)
 	userSvc := user.NewUserService(userRepo)
@@ -67,7 +77,7 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	{
 		// user
 		public.POST("/user/account/register", middleware.RateLimitMiddleware(constants.LimitAuth), userHdl.Register)
-		public.POST("/user/account/login", middleware.RateLimitMiddleware(constants.LimitAuth), userHdl.Login)
+		public.POST("/user/account/login",  userHdl.Login)
 		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
 
 		// character
@@ -98,6 +108,28 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 		protected.POST("/friend/message/chat", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.StreamChat)
 		protected.GET("/friend/message/get_history", friendHdl.GetMessageHistory)
 	}
+
+	r.NoRoute(func(c *gin.Context) {
+		requestPath := c.Request.URL.Path
+		if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"result": "接口不存在"})
+			return
+		}
+
+		cleanPath := filepath.Clean(strings.TrimPrefix(requestPath, "/"))
+		if cleanPath == "." {
+			c.File(frontendIndexFile)
+			return
+		}
+
+		staticFilePath := filepath.Join(frontendDistDir, cleanPath)
+		if fileInfo, err := os.Stat(staticFilePath); err == nil && !fileInfo.IsDir() {
+			c.File(staticFilePath)
+			return
+		}
+
+		c.File(frontendIndexFile)
+	})
 
 	return r
 }

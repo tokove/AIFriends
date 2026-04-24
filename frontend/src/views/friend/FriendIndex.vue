@@ -21,9 +21,11 @@ async function loadMore() {
 
   let newFriends = []
   try {
+    const lastFriend = friends.value.at(-1)
     const res = await api.get('/api/friend/get_list/', {
       params: {
-        items_count: friends.value.length
+        cursor_updated_at: lastFriend?.updated_at,
+        cursor_id: lastFriend?.id
       }
     })
     const data = res.data
@@ -36,11 +38,15 @@ async function loadMore() {
     if (newFriends.length === 0) {
       hasFriends.value = false
     } else {
-      friends.value.push(...newFriends)
+      const existingIds = new Set(friends.value.map(friend => friend.id))
+      const uniqueFriends = newFriends.filter(friend => !existingIds.has(friend.id))
+      friends.value.push(...uniqueFriends)
       await nextTick()
 
-      if (checkSentinelVisible()) {
+      if (uniqueFriends.length > 0 && checkSentinelVisible()) {
         await loadMore()
+      } else if (uniqueFriends.length === 0) {
+        hasFriends.value = false
       }
     }
   }
