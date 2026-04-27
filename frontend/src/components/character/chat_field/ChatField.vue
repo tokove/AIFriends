@@ -1,6 +1,7 @@
 <script setup>
 import {computed, nextTick, ref, useTemplateRef} from "vue";
 import InputField from "@/components/character/chat_field/input_field/InputField.vue";
+import MicroPhone from "@/components/character/chat_field/input_field/MicroPhone.vue";
 import CharacterPhotoField from "@/components/character/chat_field/character_photo_field/CharacterPhotoField.vue";
 import ChatHistory from "@/components/character/chat_field/chat_history/ChatHistory.vue";
 
@@ -9,6 +10,7 @@ const modalRef = useTemplateRef('modal-ref')
 const inputRef = useTemplateRef('input-ref')
 const chatHistoryRef = useTemplateRef('chat-history-ref')
 const history = ref([])
+const isVoiceMode = ref(false)
 
 async function showModal() {
   modalRef.value.showModal()
@@ -19,6 +21,7 @@ async function showModal() {
 
 function handleClose() {
   inputRef.value.close()
+  isVoiceMode.value = false
 }
 
 function handlePushBackMessage(msg) {
@@ -33,6 +36,14 @@ function handleAddToLastMessage(delta) {
 
 function handlePushFrontMessage(msg) {
   history.value.unshift(msg)
+}
+
+function handleToggleVoice() {
+  isVoiceMode.value = !isVoiceMode.value
+}
+
+async function handleVoiceSend(_, text) {
+  await inputRef.value.sendMessage(text?.trim() || '')
 }
 
 const modalStyle = computed(() => {
@@ -68,9 +79,17 @@ defineExpose({
       <InputField
           v-if="friend"
           ref="input-ref"
+          v-show="!isVoiceMode"
           :friendId="friend.id"
           @pushBackMessage="handlePushBackMessage"
           @addToLastMessage="handleAddToLastMessage"
+          @toggleVoice="handleToggleVoice"
+      />
+      <MicroPhone
+          v-if="friend && isVoiceMode"
+          @close="handleToggleVoice"
+          @send="handleVoiceSend"
+          @stop="inputRef.close()"
       />
       <CharacterPhotoField v-if="friend" :character="friend.character" />
     </div>

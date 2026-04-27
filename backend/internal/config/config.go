@@ -58,6 +58,29 @@ type AgentConfig struct {
 	EmbedModel string
 }
 
+type AudioASRConfig struct {
+	Model      string
+	SampleRate int    `mapstructure:"sample_rate"`
+	Format     string `mapstructure:"format"`
+}
+
+type AudioTTSConfig struct {
+	Model      string
+	Voice      string  `mapstructure:"voice"`
+	Format     string  `mapstructure:"format"`
+	SampleRate int     `mapstructure:"sample_rate"`
+	Volume     int     `mapstructure:"volume"`
+	Rate       float64 `mapstructure:"rate"`
+	Pitch      float64 `mapstructure:"pitch"`
+}
+
+type AudioConfig struct {
+	WSURL  string
+	APIKey string
+	ASR    AudioASRConfig `mapstructure:"asr"`
+	TTS    AudioTTSConfig `mapstructure:"tts"`
+}
+
 type Config struct {
 	Server ServerConfig `mapstructure:"server"`
 	DB     DBConfig     `mapstructure:"db"`
@@ -66,6 +89,7 @@ type Config struct {
 	JWT    JwtConfig    `mapstructure:"jwt"`
 	Redis  RedisConfig  `mapstructure:"redis"`
 	Agent  AgentConfig
+	Audio  AudioConfig `mapstructure:"audio"`
 }
 
 // LoadConfig 使用 Viper 读取 YAML + .env
@@ -92,6 +116,10 @@ func LoadConfig(path string) *Config {
 	cfg.Agent.BaseURL = os.Getenv("BASE_URL")
 	cfg.Agent.LLMModel = os.Getenv("LLM_MODEL")
 	cfg.Agent.EmbedModel = os.Getenv("EMBED_MODEL")
+	cfg.Audio.APIKey = os.Getenv("API_KEY")
+	cfg.Audio.WSURL = os.Getenv("WSS_URL")
+	cfg.Audio.ASR.Model = os.Getenv("ASR_MODEL")
+	cfg.Audio.TTS.Model = os.Getenv("TTS_MODEL")
 
 	return cfg
 }

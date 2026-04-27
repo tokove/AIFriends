@@ -34,7 +34,7 @@ func main() {
 		zap.L().Fatal("install vector extension failed", zap.Error(err))
 	}
 
-	_ = db.DB.Migrator().DropTable(&model.KnowledgeDoc{})
+	// _ = db.DB.Migrator().DropTable(&model.KnowledgeDoc{})
 	// 自动迁移知识库表结构
 	if err := db.DB.AutoMigrate(&model.KnowledgeDoc{}); err != nil {
 		zap.L().Fatal("AutoMigrate failed", zap.Error(err))

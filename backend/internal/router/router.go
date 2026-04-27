@@ -6,6 +6,7 @@ import (
 	"backend/internal/friend"
 	"backend/internal/friend/agent/graph"
 	"backend/internal/friend/agent/tool"
+	"backend/internal/infra/audio"
 	"backend/internal/infra/db"
 	"backend/internal/infra/llm"
 	"backend/internal/infra/logger"
@@ -13,6 +14,7 @@ import (
 	"backend/internal/user"
 	"backend/pkg/constants"
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,9 +27,6 @@ import (
 )
 
 func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Client) *gin.Engine {
-	const frontendDistDir = "./static/frontend"
-	const frontendIndexFile = "./static/frontend/index.html"
-
 	if mode == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -36,10 +35,15 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	r.Use(logger.GinLogger(), logger.GinRecovery(true))
 	// 跨域中间件
 	r.Use(middleware.CorsMiddleware(cfg.Cors))
+	r.Use(func(c *gin.Context) {
+		if c.Request.Method == http.MethodGet && (strings.HasPrefix(c.Request.URL.Path, "/api/media/") || strings.HasPrefix(c.Request.URL.Path, "/api/data/")) {
+			c.Header("Cache-Control", fmt.Sprintf("public, max-age=%d", constants.MediaCacheMaxAge))
+		}
+		c.Next()
+	})
 	r.Static("/api/media", "./media")
-	r.Static("/api/data", "./media")
 	r.GET("/", func(c *gin.Context) {
-		c.File(frontendIndexFile)
+		c.File(constants.FrontendIndexFile)
 	})
 
 	userRepo := user.NewUserRepository(basedb)
@@ -69,15 +73,16 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	if err != nil {
 		zap.L().Panic("NewMemoryGraph error:", zap.Error(err))
 	}
+	audioSvc := audio.NewService(&cfg.Audio)
 	friendRepo := friend.NewFriendRepository(basedb)
-	friendSvc := friend.NewFriendService(friendRepo, chatGraph, memoryGraph)
+	friendSvc := friend.NewFriendService(friendRepo, audioSvc, chatGraph, memoryGraph)
 	friendHdl := friend.NewFriendHandler(friendSvc)
 
 	public := r.Group("/api")
 	{
 		// user
 		public.POST("/user/account/register", middleware.RateLimitMiddleware(constants.LimitAuth), userHdl.Register)
-		public.POST("/user/account/login",  userHdl.Login)
+		public.POST("/user/account/login", userHdl.Login)
 		public.POST("/user/account/refresh_token", userHdl.RefreshToken)
 
 		// character
@@ -105,6 +110,7 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 		protected.POST("/friend/get_or_create", friendHdl.GetOrCreate)
 		protected.GET("/friend/get_list", friendHdl.GetFriendList)
 		protected.POST("/friend/remove", friendHdl.RemoveFriend)
+		protected.POST("/friend/message/asr", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.ASR)
 		protected.POST("/friend/message/chat", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.StreamChat)
 		protected.GET("/friend/message/get_history", friendHdl.GetMessageHistory)
 	}
@@ -118,17 +124,17 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 
 		cleanPath := filepath.Clean(strings.TrimPrefix(requestPath, "/"))
 		if cleanPath == "." {
-			c.File(frontendIndexFile)
+			c.File(constants.FrontendIndexFile)
 			return
 		}
 
-		staticFilePath := filepath.Join(frontendDistDir, cleanPath)
+		staticFilePath := filepath.Join(constants.FrontendDistDir, cleanPath)
 		if fileInfo, err := os.Stat(staticFilePath); err == nil && !fileInfo.IsDir() {
 			c.File(staticFilePath)
 			return
 		}
 
-		c.File(frontendIndexFile)
+		c.File(constants.FrontendIndexFile)
 	})
 
 	return r

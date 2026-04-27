@@ -21,6 +21,8 @@ const (
 	DirUserPhoto                = "user/photos"
 	DirCharacterPhoto           = "character/photos"
 	DirCharacterBackgroundImage = "character/background_images"
+	FrontendDistDir             = "./static/frontend"
+	FrontendIndexFile           = "./static/frontend/index.html"
 
 	// 其它
 	DefaultLimit        = 20
@@ -30,12 +32,35 @@ const (
 	// 聊天模块
 	SystemPromptTitleReply  = "回复"
 	SystemPromptTitleMemory = "记忆"
+	ErrSystemBusy           = "系统繁忙，请稍后再试"
+	ErrFriendNotFound       = "好友不存在"
+	ErrAudioNotFound        = "音频不存在"
+	ErrASRFailed            = "语音识别失败"
+	ErrCharacterNotFound    = "角色不存在"
+	ErrUserNotFound         = "用户不存在"
+	ErrTTSFailed            = "语音合成失败"
 
 	MaxChatHistoryCount   = 12
 	MaxMemorySummaryCount = 20
 	MaxMsgLen             = 500
 	MaxContextLength      = 2200
 	MaxDBInputLength      = 6000
+	ASRChunkSize          = 3200
+	MediaCacheMaxAge      = 86400
+
+	AudioTaskGroup          = "audio"
+	AudioASRTask            = "asr"
+	AudioASRFunction        = "recognition"
+	AudioTTSTask            = "tts"
+	AudioTTSFunction        = "SpeechSynthesizer"
+	AudioStreamingDuplex    = "duplex"
+	AudioRunTaskAction      = "run-task"
+	AudioContinueTaskAction = "continue-task"
+	AudioFinishTaskAction   = "finish-task"
+	AudioTaskStartedEvent   = "task-started"
+	AudioTaskFinishedEvent  = "task-finished"
+	AudioTaskFailedEvent    = "task-failed"
+	AudioResultEvent        = "result-generated"
 
 	MarkdownJSONPrefix = "```json\n"
 	MarkdownPrefix     = "```\n"

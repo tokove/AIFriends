@@ -3,15 +3,18 @@ import BackgroundImage from "@/views/create/character/components/BackgroundImage
 import Profile from "@/views/create/character/components/Profile.vue";
 import Name from "@/views/create/character/components/Name.vue";
 import Photo from "@/views/create/character/components/Photo.vue";
+import Voice from "@/views/create/character/components/Voice.vue";
 import {ref, useTemplateRef} from "vue";
 import {base64ToFile} from "@/js/utils/base64_to_file.js";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 import {useRouter} from "vue-router";
 import {validateCharacterName, validateCharacterProfile} from "@/js/utils/validators.js";
+import voices from "@/js/config/voices.js";
 
 const photoRef = useTemplateRef('photo-ref')
 const nameRef = useTemplateRef('name-ref')
+const voiceRef = useTemplateRef('voice-ref')
 const profileRef = useTemplateRef('profile-ref')
 const backgroundImageRef = useTemplateRef('background-image-ref')
 const errorMessage= ref('')
@@ -23,6 +26,7 @@ async function handleCreate() {
   errorMessage.value = ''
   const photo = photoRef.value.myPhoto
   const name = nameRef.value.myName?.trim()
+  const voiceId = voiceRef.value.myVoice ?? ''
   const profile = profileRef.value.myProfile?.trim()
   const backgroundImage = backgroundImageRef.value.myBackgroundImage
   const nameError = validateCharacterName(name)
@@ -39,6 +43,7 @@ async function handleCreate() {
   } else {
     const formData = new FormData()
     formData.append('name', name)
+    formData.append('voice_id', voiceId)
     formData.append('profile', profile)
     formData.append('photo', base64ToFile(photo, 'photo.png'))
     formData.append('background_image', base64ToFile(backgroundImage, 'background_image.png'))
@@ -70,6 +75,7 @@ async function handleCreate() {
         <h3 class="text-lg font-bold my-4">创建角色</h3>
         <Photo ref="photo-ref" />
         <Name ref="name-ref" />
+        <Voice ref="voice-ref" :voices="voices" :curVoiceId="''" />
         <Profile ref="profile-ref" />
         <BackgroundImage ref="background-image-ref" />
 

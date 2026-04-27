@@ -66,6 +66,7 @@ func (h *charHandler) CreateChar(c *gin.Context) {
 	}
 
 	name := c.PostForm("name")
+	voiceID := c.PostForm("voice_id")
 	profile := c.PostForm("profile")
 
 	photo, err := c.FormFile("photo")
@@ -88,7 +89,7 @@ func (h *charHandler) CreateChar(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.CreateChar(c.Request.Context(), userID, name, profile, photo, bg); err != nil {
+	if err := h.svc.CreateChar(c.Request.Context(), userID, name, voiceID, profile, photo, bg); err != nil {
 		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
@@ -114,6 +115,7 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 	}
 
 	name := c.PostForm("name")
+	voiceID := c.PostForm("voice_id")
 	profile := c.PostForm("profile")
 
 	photo, err := c.FormFile("photo")
@@ -146,7 +148,7 @@ func (h *charHandler) UpdateChar(c *gin.Context) {
 		}
 	}
 
-	if err := h.svc.UpdateChar(c.Request.Context(), userID, uint(charID), name, profile, photo, bg); err != nil {
+	if err := h.svc.UpdateChar(c.Request.Context(), userID, uint(charID), name, voiceID, profile, photo, bg); err != nil {
 		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
 	}
@@ -264,6 +266,7 @@ func (h *charHandler) GetCharList(c *gin.Context) {
 			ID:              char.ID,
 			UpdatedAt:       char.UpdatedAt.UnixMilli(),
 			Name:            char.Name,
+			VoiceID:         char.VoiceID,
 			Profile:         char.Profile,
 			Photo:           constants.StaticBaseURL + char.Photo,
 			BackgroundImage: constants.StaticBaseURL + char.BackgroundImage,

@@ -17,8 +17,8 @@ import (
 )
 
 type CharService interface {
-	CreateChar(ctx context.Context, authorID uint, name, profile string, photo, bg *multipart.FileHeader) error
-	UpdateChar(ctx context.Context, authorID, charID uint, name, profile string, photo, bg *multipart.FileHeader) error
+	CreateChar(ctx context.Context, authorID uint, name, voiceID, profile string, photo, bg *multipart.FileHeader) error
+	UpdateChar(ctx context.Context, authorID, charID uint, name, voiceID, profile string, photo, bg *multipart.FileHeader) error
 	GetCharSingle(ctx context.Context, charID uint) (*GetSingleResp, error)
 	GetUserProfile(ctx context.Context, userID uint) (*model.User, error)
 	GetUserChars(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Character, error)
@@ -34,8 +34,9 @@ func NewCharService(repo CharRepository) CharService {
 	return &charService{repo: repo}
 }
 
-func (s *charService) CreateChar(ctx context.Context, authorID uint, name, profile string, photo, bg *multipart.FileHeader) error {
+func (s *charService) CreateChar(ctx context.Context, authorID uint, name, voiceID, profile string, photo, bg *multipart.FileHeader) error {
 	name = strings.TrimSpace(name)
+	voiceID = strings.TrimSpace(voiceID)
 	profile = strings.TrimSpace(profile)
 
 	nLen := utf8.RuneCountInString(name)
@@ -73,6 +74,7 @@ func (s *charService) CreateChar(ctx context.Context, authorID uint, name, profi
 	char := &model.Character{
 		AuthorID:        authorID,
 		Name:            name,
+		VoiceID:         voiceID,
 		Profile:         profile,
 		Photo:           photoURL,
 		BackgroundImage: bgURL,
@@ -87,7 +89,7 @@ func (s *charService) CreateChar(ctx context.Context, authorID uint, name, profi
 	return nil
 }
 
-func (s *charService) UpdateChar(ctx context.Context, authorID, charID uint, name, profile string, photo, bg *multipart.FileHeader) error {
+func (s *charService) UpdateChar(ctx context.Context, authorID, charID uint, name, voiceID, profile string, photo, bg *multipart.FileHeader) error {
 	// 1. 先查询旧数据进行鉴权
 	oldChar, err := s.repo.GetByID(ctx, charID)
 	if err != nil {
@@ -106,6 +108,7 @@ func (s *charService) UpdateChar(ctx context.Context, authorID, charID uint, nam
 
 	// 3. 准备更新字段
 	name = strings.TrimSpace(name)
+	voiceID = strings.TrimSpace(voiceID)
 	profile = strings.TrimSpace(profile)
 
 	nLen := utf8.RuneCountInString(name)
@@ -114,6 +117,7 @@ func (s *charService) UpdateChar(ctx context.Context, authorID, charID uint, nam
 		return fmt.Errorf("名字长度需在 %d-%d 个字符之间", constants.MinCharNameLen, constants.MaxCharNameLen)
 	}
 	oldChar.Name = name
+	oldChar.VoiceID = voiceID
 
 	pLen := utf8.RuneCountInString(profile)
 	if pLen == 0 {
@@ -191,6 +195,7 @@ func (s *charService) GetCharSingle(ctx context.Context, charID uint) (*GetSingl
 	return &GetSingleResp{
 		ID:              charID,
 		Name:            char.Name,
+		VoiceID:         char.VoiceID,
 		Profile:         char.Profile,
 		Photo:           constants.StaticBaseURL + char.Photo,
 		BackgroundImage: constants.StaticBaseURL + char.BackgroundImage,

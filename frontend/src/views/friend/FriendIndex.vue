@@ -1,12 +1,15 @@
 <script setup>
-import {nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef} from "vue";
+import {nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch} from "vue";
 import api from "@/js/http/api.js";
 import Character from "@/components/character/Character.vue";
+import {useUserStore} from "@/stores/user.js";
 
 const friends = ref([])
 const isLoading = ref(false)
 const hasFriends = ref(true)
 const sentinelRef = useTemplateRef('sentinel-ref')
+const user = useUserStore()
+let hasInitialized = false
 
 function checkSentinelVisible() {  // 判断哨兵是否能被看到
   if (!sentinelRef.value) return false
@@ -16,6 +19,7 @@ function checkSentinelVisible() {  // 判断哨兵是否能被看到
 }
 
 async function loadMore() {
+  if (!user.isLogin()) return
   if (isLoading.value || !hasFriends.value) return
   isLoading.value = true
 
@@ -53,7 +57,9 @@ async function loadMore() {
 }
 
 let observer = null
-onMounted(async() => {
+async function initFriendList() {
+  if (hasInitialized || !user.hasPulledUserInfo || !user.isLogin()) return
+  hasInitialized = true
   await loadMore()
   observer = new IntersectionObserver(
       entries => {
@@ -66,6 +72,18 @@ onMounted(async() => {
       {root: null, rootMargin: '2px', threshold: 0}
   )
   observer.observe(sentinelRef.value)
+}
+
+watch(
+    () => [user.hasPulledUserInfo, user.isLogin()],
+    async () => {
+      await initFriendList()
+    },
+    { immediate: true }
+)
+
+onMounted(async() => {
+  await initFriendList()
 })
 
 function removeFriend(friendId) {

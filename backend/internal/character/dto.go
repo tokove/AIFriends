@@ -7,6 +7,7 @@ type DeleteCharReq struct {
 type GetSingleResp struct {
 	ID              uint   `json:"id"`
 	Name            string `json:"name"`
+	VoiceID         string `json:"voice_id"`
 	Profile         string `json:"profile"`
 	Photo           string `json:"photo"`
 	BackgroundImage string `json:"background_image"`
@@ -22,6 +23,7 @@ type CharacterItemResp struct {
 	ID              uint           `json:"id"`
 	UpdatedAt       int64          `json:"updated_at"`
 	Name            string         `json:"name"`
+	VoiceID         string         `json:"voice_id"`
 	Profile         string         `json:"profile"`
 	Photo           string         `json:"photo"`
 	BackgroundImage string         `json:"background_image"`

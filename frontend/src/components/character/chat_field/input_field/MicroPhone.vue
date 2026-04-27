@@ -2,18 +2,21 @@
 import KeyboardIcon from "@/components/character/icons/KeyboardIcon.vue";
 import {onBeforeUnmount, onMounted, ref} from "vue";
 import {MicVAD} from "@ricky0123/vad-web";
+import ortWasmSimdThreadedUrl from "../../../../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs?url";
 import api from "@/js/http/api.js";
 import CONFIG_API from "@/js/config/config.js";
 
 const emit = defineEmits(['close', 'send', 'stop'])
 const isSpeaking = ref(false)
 let vadInstance = null;
+const ortWASMBasePath = ortWasmSimdThreadedUrl.slice(0, ortWasmSimdThreadedUrl.lastIndexOf("/") + 1)
 
 const startRecording = async () => {
   const baseUrl = CONFIG_API.VAD_URL;
   try {
     vadInstance = await MicVAD.new({
       baseAssetPath: baseUrl,
+      onnxWASMBasePath: ortWASMBasePath,
       onSpeechStart: () => {
         isSpeaking.value = true;
         emit("stop")
@@ -24,7 +27,6 @@ const startRecording = async () => {
         sendToBackend(pcm16);
       },
       ortConfig: (ort) => {
-        ort.env.wasm.wasmPaths = baseUrl;
         ort.env.logLevel = "error";
       },
       positiveSpeechThreshold: 0.8,
@@ -35,6 +37,7 @@ const startRecording = async () => {
 
     await vadInstance.start();
   } catch (e) {
+    console.error('[vad] start failed', e)
   }
 };
 // 将 Float32 转 PCM 16-bit
@@ -52,7 +55,7 @@ const sendToBackend = async (arrayBuffer) => {
   const formData = new FormData()
   formData.append("audio", blob, "voice.pcm")
   try {
-    const res = await api.post("/api/friend/message/asr/asr/", formData)
+    const res = await api.post("/api/friend/message/asr", formData)
     const data = res.data
     if (data.result === "success") {
       emit("send", null, data.text)

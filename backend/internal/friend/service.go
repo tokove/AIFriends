@@ -2,6 +2,7 @@ package friend
 
 import (
 	"backend/internal/friend/agent/graph"
+	"backend/internal/infra/audio"
 	"backend/internal/model"
 	"backend/pkg/constants"
 	"context"
@@ -21,6 +22,8 @@ type FriendService interface {
 	GetOrCreate(ctx context.Context, charID, userID uint) (*model.Friend, error)
 	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Friend, error)
 	RemoveFriend(ctx context.Context, friendID, userID uint) error
+	ASR(ctx context.Context, pcmData []byte) (string, error)
+	StreamTTS(ctx context.Context, friendID, userID uint, textCh <-chan string) (<-chan []byte, <-chan error, error)
 	StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error)
 	SaveMessage(ctx context.Context, msg *model.Message) error
 	UpdateMemory(ctx context.Context, friendID uint) error
@@ -30,13 +33,20 @@ type FriendService interface {
 
 type friendService struct {
 	repo        FriendRepository
+	audioSvc    audio.Service
 	chatGraph   compose.Runnable[graph.ChatState, *schema.Message]
 	memoryGraph compose.Runnable[graph.MemoryState, *schema.Message]
 }
 
-func NewFriendService(repo FriendRepository, chatGraph compose.Runnable[graph.ChatState, *schema.Message], memoryGraph compose.Runnable[graph.MemoryState, *schema.Message]) FriendService {
+func NewFriendService(
+	repo FriendRepository,
+	audioSvc audio.Service,
+	chatGraph compose.Runnable[graph.ChatState, *schema.Message],
+	memoryGraph compose.Runnable[graph.MemoryState, *schema.Message],
+) FriendService {
 	return &friendService{
 		repo:        repo,
+		audioSvc:    audioSvc,
 		chatGraph:   chatGraph,
 		memoryGraph: memoryGraph,
 	}
@@ -50,13 +60,13 @@ func (s *friendService) GetOrCreate(ctx context.Context, charID, userID uint) (*
 
 	if err := s.repo.AddFriend(ctx, newFriend); err != nil {
 		zap.L().Error("[friend service] AddFriend error", zap.Error(err))
-		return nil, errors.New("系统繁忙，请稍后再试")
+		return nil, errors.New(constants.ErrSystemBusy)
 	}
 
 	f, err := s.repo.GetFriend(ctx, charID, userID)
 	if err != nil {
 		zap.L().Error("[friend service] Final GetFriend error", zap.Error(err))
-		return nil, errors.New("系统繁忙，请稍后再试")
+		return nil, errors.New(constants.ErrSystemBusy)
 	}
 
 	return f, nil
@@ -66,7 +76,7 @@ func (s *friendService) GetList(ctx context.Context, userID uint, cursorUpdatedA
 	friends, err := s.repo.GetList(ctx, userID, cursorUpdatedAt, cursorID, constants.DefaultLimit)
 	if err != nil {
 		zap.L().Error("[friend service] GetList db error", zap.Error(err))
-		return nil, errors.New("系统繁忙，请稍后再试")
+		return nil, errors.New(constants.ErrSystemBusy)
 	}
 	return friends, nil
 }
@@ -75,19 +85,19 @@ func (s *friendService) RemoveFriend(ctx context.Context, friendID, userID uint)
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("好友不存在")
+			return errors.New(constants.ErrFriendNotFound)
 		}
 		zap.L().Error("[friend service] GetByID db error", zap.Error(err))
-		return errors.New("系统繁忙，请稍后再试")
+		return errors.New(constants.ErrSystemBusy)
 	}
 
 	if friend.MeID != userID {
-		return errors.New("好友不存在")
+		return errors.New(constants.ErrFriendNotFound)
 	}
 
 	if err := s.repo.RemoveFriend(ctx, friendID); err != nil {
 		zap.L().Error("[friend service] DeleteFriend db error", zap.Error(err))
-		return errors.New("系统繁忙，请稍后再试")
+		return errors.New(constants.ErrSystemBusy)
 	}
 	return nil
 }
@@ -95,9 +105,52 @@ func (s *friendService) RemoveFriend(ctx context.Context, friendID, userID uint)
 func (s *friendService) SaveMessage(ctx context.Context, msg *model.Message) error {
 	if err := s.repo.SaveMessageTx(ctx, msg); err != nil {
 		zap.L().Error("[friend service] SaveMessageTx error", zap.Error(err))
-		return errors.New("系统繁忙，请稍后再试")
+		return errors.New(constants.ErrSystemBusy)
 	}
 	return nil
+}
+
+func (s *friendService) ASR(ctx context.Context, pcmData []byte) (string, error) {
+	if len(pcmData) == 0 {
+		return "", errors.New(constants.ErrAudioNotFound)
+	}
+	if s.audioSvc == nil {
+		zap.L().Error("[friend service] audio service is nil")
+		return "", errors.New(constants.ErrSystemBusy)
+	}
+
+	text, err := s.audioSvc.ASR(ctx, pcmData)
+	if err != nil {
+		zap.L().Error("[friend service] recognize audio failed", zap.Error(err))
+		return "", errors.New(constants.ErrASRFailed)
+	}
+	return text, nil
+}
+
+func (s *friendService) StreamTTS(ctx context.Context, friendID, userID uint, textCh <-chan string) (<-chan []byte, <-chan error, error) {
+	friend, err := s.repo.GetByID(ctx, friendID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, errors.New(constants.ErrFriendNotFound)
+		}
+		zap.L().Error("[friend service] GetByID db error for stream tts", zap.Error(err))
+		return nil, nil, errors.New(constants.ErrSystemBusy)
+	}
+	if friend.MeID != userID {
+		return nil, nil, errors.New(constants.ErrFriendNotFound)
+	}
+	if s.audioSvc == nil {
+		zap.L().Error("[friend service] audio service is nil for stream tts")
+		return nil, nil, errors.New(constants.ErrSystemBusy)
+	}
+
+	voiceID := ""
+	if friend.Character != nil {
+		voiceID = friend.Character.VoiceID
+	}
+
+	audioCh, errCh := s.audioSvc.TTS(ctx, textCh, voiceID)
+	return audioCh, errCh, nil
 }
 
 func (s *friendService) StreamChat(
