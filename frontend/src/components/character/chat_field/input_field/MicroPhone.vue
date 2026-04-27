@@ -10,6 +10,7 @@ const emit = defineEmits(['close', 'send', 'stop'])
 const isSpeaking = ref(false)
 let vadInstance = null;
 const ortWASMBasePath = ortWasmSimdThreadedUrl.slice(0, ortWasmSimdThreadedUrl.lastIndexOf("/") + 1)
+const AUDIO_SAMPLE_RATE = 16000
 
 const startRecording = async () => {
   const baseUrl = CONFIG_API.VAD_URL;
@@ -23,8 +24,7 @@ const startRecording = async () => {
       },
       onSpeechEnd: (audio) => {
         isSpeaking.value = false;
-        const pcm16 = float32ToInt16(audio);
-        sendToBackend(pcm16);
+        sendToBackend(audio);
       },
       ortConfig: (ort) => {
         ort.env.logLevel = "error";
@@ -40,30 +40,69 @@ const startRecording = async () => {
     console.error('[vad] start failed', e)
   }
 };
-// 将 Float32 转 PCM 16-bit
 const float32ToInt16 = (float32Array) => {
   const buffer = new Int16Array(float32Array.length);
   for (let i = 0; i < float32Array.length; i++) {
     let s = Math.max(-1, Math.min(1, float32Array[i]));
     buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
-  return buffer.buffer;
-};
+  return buffer;
+}
 
-const sendToBackend = async (arrayBuffer) => {
-  const blob = new Blob([arrayBuffer], { type: "audio/pcm" })
+const encodeWav = (pcm16Array, sampleRate) => {
+  const dataSize = pcm16Array.length * 2
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i))
+    }
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeString(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let i = 0; i < pcm16Array.length; i++, offset += 2) {
+    view.setInt16(offset, pcm16Array[i], true)
+  }
+  return new Blob([buffer], { type: 'audio/wav' })
+}
+
+const sendToBackend = async (float32Audio) => {
+  const pcm16 = float32ToInt16(float32Audio)
+  const pcmBlob = new Blob([pcm16.buffer], { type: "audio/pcm" })
+  const wavBlob = encodeWav(pcm16, AUDIO_SAMPLE_RATE)
+  const durationMs = Math.round(float32Audio.length / AUDIO_SAMPLE_RATE * 1000)
   const formData = new FormData()
-  formData.append("audio", blob, "voice.pcm")
+  formData.append("audio", pcmBlob, "voice.pcm")
+  formData.append("display_audio", wavBlob, "voice.wav")
+  formData.append("duration_ms", String(durationMs))
   try {
     const res = await api.post("/api/friend/message/asr", formData)
     const data = res.data
     if (data.result === "success") {
-      emit("send", null, data.text)
+      emit("send", {
+        text: data.text,
+        audioUrl: data.audio_url || URL.createObjectURL(wavBlob),
+        durationMs: data.duration_ms || durationMs,
+      })
     }
   } catch (err) {
     console.error(err)
   }
-};
+}
 
 onMounted(() => {
   startRecording()

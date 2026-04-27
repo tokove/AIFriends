@@ -3,6 +3,7 @@ package friend
 import (
 	"backend/internal/model"
 	"backend/pkg/constants"
+	"backend/pkg/utils"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -181,11 +182,22 @@ func (h *friendHandler) RemoveFriend(c *gin.Context) {
 }
 
 func (h *friendHandler) ASR(c *gin.Context) {
+	uid, _ := c.Get("user_id")
+	userID, ok := uid.(uint)
+	if !ok {
+		zap.L().Error("[friend handler] userID type error in ASR")
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
+		return
+	}
+
 	audioFile, err := c.FormFile("audio")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"result": constants.ErrAudioNotFound})
 		return
 	}
+
+	displayAudioFile, _ := c.FormFile("display_audio")
+	durationMS, _ := strconv.Atoi(c.PostForm("duration_ms"))
 
 	file, err := audioFile.Open()
 	if err != nil {
@@ -208,10 +220,48 @@ func (h *friendHandler) ASR(c *gin.Context) {
 		return
 	}
 
+	audioURL := ""
+	if displayAudioFile != nil {
+		audioPath, uploadErr := utils.UploadFile(userID, displayAudioFile, constants.DirMessageAudio)
+		if uploadErr != nil {
+			zap.L().Error("[friend handler] upload display audio failed", zap.Error(uploadErr))
+		} else if audioPath != "" {
+			audioURL = constants.StaticBaseURL + audioPath
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"result": "success",
-		"text":   text,
+		"result":      "success",
+		"text":        text,
+		"audio_url":   audioURL,
+		"duration_ms": durationMS,
 	})
+}
+
+func (h *friendHandler) TTS(c *gin.Context) {
+	uid, _ := c.Get("user_id")
+	userID, ok := uid.(uint)
+	if !ok {
+		zap.L().Error("[friend handler] userID type error in TTS")
+		c.JSON(http.StatusUnauthorized, gin.H{"result": "未登录"})
+		return
+	}
+
+	var req TTSReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"result": "参数格式错误"})
+		return
+	}
+
+	audioData, err := h.svc.TTS(c.Request.Context(), req.FriendID, userID, req.Text)
+	if err != nil {
+		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
+		return
+	}
+
+	c.Header("Content-Type", "audio/mpeg")
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "audio/mpeg", audioData)
 }
 
 func (h *friendHandler) StreamChat(c *gin.Context) {
@@ -258,11 +308,17 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	ttsInputCh := make(chan string, 16)
 	eventCh := make(chan streamEvent, 32)
 
-	audioCh, audioErrCh, ttsErr := h.svc.StreamTTS(c.Request.Context(), req.FriendID, userID, ttsInputCh)
-	ttsEnabled := ttsErr == nil
-	if ttsErr != nil {
-		zap.L().Error("[friend handler] init stream tts failed", zap.Error(ttsErr))
-		close(ttsInputCh)
+	ttsEnabled := req.EnableTTS
+	var audioCh <-chan []byte
+	var audioErrCh <-chan error
+	if ttsEnabled {
+		var ttsErr error
+		audioCh, audioErrCh, ttsErr = h.svc.StreamTTS(c.Request.Context(), req.FriendID, userID, ttsInputCh)
+		ttsEnabled = ttsErr == nil
+		if ttsErr != nil {
+			zap.L().Error("[friend handler] init stream tts failed", zap.Error(ttsErr))
+			close(ttsInputCh)
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -365,13 +421,23 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		saveCtx := context.Background()
 
 		msg := &model.Message{
-			FriendID:     req.FriendID,
-			UserMessage:  truncateString(req.Message, constants.MaxMsgLen),
-			Input:        inputStr,
-			Output:       truncateString(currentFinalOutput, constants.MaxMsgLen),
-			InputTokens:  inTok,
-			OutputTokens: outTok,
-			TotalTokens:  totTok,
+			FriendID:            req.FriendID,
+			UserMessage:         truncateString(req.Message, constants.MaxMsgLen),
+			UserMessageType:     constants.MessageTypeText,
+			UserAudio:           req.UserAudio,
+			UserASRText:         truncateString(req.UserASRText, constants.MaxMsgLen),
+			UserAudioDurationMS: req.UserAudioDurationMS,
+			Input:               inputStr,
+			Output:              truncateString(currentFinalOutput, constants.MaxMsgLen),
+			InputTokens:         inTok,
+			OutputTokens:        outTok,
+			TotalTokens:         totTok,
+		}
+		if req.UserMessageType == constants.MessageTypeVoice {
+			msg.UserMessageType = constants.MessageTypeVoice
+			if msg.UserASRText == "" {
+				msg.UserASRText = msg.UserMessage
+			}
 		}
 
 		if err := h.svc.SaveMessage(saveCtx, msg); err != nil {
@@ -469,9 +535,13 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 	resps := make([]MessageResp, 0, len(msgs))
 	for _, m := range msgs {
 		resps = append(resps, MessageResp{
-			ID:          m.ID,
-			UserMessage: m.UserMessage,
-			Output:      m.Output,
+			ID:                  m.ID,
+			UserMessage:         m.UserMessage,
+			UserMessageType:     m.UserMessageType,
+			UserAudio:           m.UserAudio,
+			UserASRText:         m.UserASRText,
+			UserAudioDurationMS: m.UserAudioDurationMS,
+			Output:              m.Output,
 		})
 	}
 

@@ -111,6 +111,7 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 		protected.GET("/friend/get_list", friendHdl.GetFriendList)
 		protected.POST("/friend/remove", friendHdl.RemoveFriend)
 		protected.POST("/friend/message/asr", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.ASR)
+		protected.POST("/friend/message/tts", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.TTS)
 		protected.POST("/friend/message/chat", middleware.RateLimitMiddleware(constants.LimitChat), friendHdl.StreamChat)
 		protected.GET("/friend/message/get_history", friendHdl.GetMessageHistory)
 	}

@@ -14,7 +14,8 @@ const wsIOTimeout = 60 * time.Second
 
 type Service interface {
 	ASR(ctx context.Context, pcmData []byte) (string, error)
-	TTS(ctx context.Context, textCh <-chan string, voiceID string) (<-chan []byte, <-chan error)
+	TTS(ctx context.Context, text, voiceID string) ([]byte, error)
+	StreamTTS(ctx context.Context, textCh <-chan string, voiceID string) (<-chan []byte, <-chan error)
 }
 
 type service struct {

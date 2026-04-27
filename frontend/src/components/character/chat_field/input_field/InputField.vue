@@ -4,7 +4,7 @@ import MicIcon from "@/components/character/icons/MicIcon.vue";
 import {ref, useTemplateRef} from "vue";
 import streamApi from "@/js/http/streamApi.js";
 
-const props = defineProps(['friendId'])
+const props = defineProps(['friendId', 'enableTts'])
 const emit = defineEmits(['pushBackMessage', 'addToLastMessage', 'toggleVoice'])
 const inputRef = useTemplateRef('input-ref')
 const message = ref('')
@@ -124,33 +124,50 @@ function finishAudioStream() {
   flushSourceBuffer()
 }
 
-async function sendMessage(content) {
+async function sendMessage(content, messageMeta = null) {
   if (!content) return
 
   const curId = ++ processId
 
   stopAudio()
-  ensureAudioStream()
+  if (props.enableTts) {
+    ensureAudioStream()
+  }
   clearFlushTimer()
   streamBuffer = ''
 
   message.value = ""
 
-  emit('pushBackMessage', {role: 'user', content: content, id: crypto.randomUUID()})
-  emit('pushBackMessage', {role: 'ai', content: '', id: crypto.randomUUID()})
+  emit('pushBackMessage', {
+    role: 'user',
+    type: messageMeta?.type || 'text',
+    content: content,
+    asrText: messageMeta?.asrText || '',
+    audioUrl: messageMeta?.audioUrl || '',
+    durationMs: messageMeta?.durationMs || 0,
+    id: crypto.randomUUID()
+  })
+  emit('pushBackMessage', {role: 'ai', type: 'text', content: '', id: crypto.randomUUID()})
 
   try {
     await streamApi('/api/friend/message/chat/', {
       body: {
         friend_id: props.friendId,
         message: content,
+        user_message_type: messageMeta?.type || 'text',
+        user_audio: messageMeta?.audioUrl || '',
+        user_asr_text: messageMeta?.asrText || '',
+        user_audio_duration_ms: messageMeta?.durationMs || 0,
+        enable_tts: !!props.enableTts,
       },
       onmessage(data, isDone) {
         if (curId !== processId) return
 
         if (isDone) {
           flushBufferedStream()
-          finishAudioStream()
+          if (props.enableTts) {
+            finishAudioStream()
+          }
           return
         }
 
@@ -159,7 +176,7 @@ async function sendMessage(content) {
           scheduleStreamFlush()
         }
 
-        if (data.audio) {
+        if (props.enableTts && data.audio) {
           enqueueAudioChunk(data.audio)
         }
       },

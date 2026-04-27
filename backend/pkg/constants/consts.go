@@ -21,6 +21,7 @@ const (
 	DirUserPhoto                = "user/photos"
 	DirCharacterPhoto           = "character/photos"
 	DirCharacterBackgroundImage = "character/background_images"
+	DirMessageAudio             = "message/audios"
 	FrontendDistDir             = "./static/frontend"
 	FrontendIndexFile           = "./static/frontend/index.html"
 
@@ -65,6 +66,9 @@ const (
 	MarkdownJSONPrefix = "```json\n"
 	MarkdownPrefix     = "```\n"
 	MarkdownSuffix     = "\n```"
+
+	MessageTypeText  = "text"
+	MessageTypeVoice = "voice"
 )
 
 type RateLimitConfig struct {

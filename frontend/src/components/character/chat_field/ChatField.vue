@@ -11,6 +11,7 @@ const inputRef = useTemplateRef('input-ref')
 const chatHistoryRef = useTemplateRef('chat-history-ref')
 const history = ref([])
 const isVoiceMode = ref(false)
+const enableTts = ref(true)
 
 async function showModal() {
   modalRef.value.showModal()
@@ -42,8 +43,18 @@ function handleToggleVoice() {
   isVoiceMode.value = !isVoiceMode.value
 }
 
-async function handleVoiceSend(_, text) {
-  await inputRef.value.sendMessage(text?.trim() || '')
+function toggleTts() {
+  enableTts.value = !enableTts.value
+  inputRef.value?.close()
+}
+
+async function handleVoiceSend(payload) {
+  await inputRef.value.sendMessage(payload?.text?.trim() || '', {
+    type: 'voice',
+    audioUrl: payload?.audioUrl || '',
+    asrText: payload?.text?.trim() || '',
+    durationMs: payload?.durationMs || 0,
+  })
 }
 
 const modalStyle = computed(() => {
@@ -81,6 +92,7 @@ defineExpose({
           ref="input-ref"
           v-show="!isVoiceMode"
           :friendId="friend.id"
+          :enable-tts="enableTts"
           @pushBackMessage="handlePushBackMessage"
           @addToLastMessage="handleAddToLastMessage"
           @toggleVoice="handleToggleVoice"
@@ -91,7 +103,12 @@ defineExpose({
           @send="handleVoiceSend"
           @stop="inputRef.close()"
       />
-      <CharacterPhotoField v-if="friend" :character="friend.character" />
+      <CharacterPhotoField
+          v-if="friend"
+          :character="friend.character"
+          :enable-tts="enableTts"
+          @toggleTts="toggleTts"
+      />
     </div>
   </dialog>
 </template>

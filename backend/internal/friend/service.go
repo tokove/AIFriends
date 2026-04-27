@@ -23,6 +23,7 @@ type FriendService interface {
 	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Friend, error)
 	RemoveFriend(ctx context.Context, friendID, userID uint) error
 	ASR(ctx context.Context, pcmData []byte) (string, error)
+	TTS(ctx context.Context, friendID, userID uint, text string) ([]byte, error)
 	StreamTTS(ctx context.Context, friendID, userID uint, textCh <-chan string) (<-chan []byte, <-chan error, error)
 	StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error)
 	SaveMessage(ctx context.Context, msg *model.Message) error
@@ -127,6 +128,36 @@ func (s *friendService) ASR(ctx context.Context, pcmData []byte) (string, error)
 	return text, nil
 }
 
+func (s *friendService) TTS(ctx context.Context, friendID, userID uint, text string) ([]byte, error) {
+	friend, err := s.repo.GetByID(ctx, friendID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New(constants.ErrFriendNotFound)
+		}
+		zap.L().Error("[friend service] GetByID db error for tts", zap.Error(err))
+		return nil, errors.New(constants.ErrSystemBusy)
+	}
+	if friend.MeID != userID {
+		return nil, errors.New(constants.ErrFriendNotFound)
+	}
+	if s.audioSvc == nil {
+		zap.L().Error("[friend service] audio service is nil for tts")
+		return nil, errors.New(constants.ErrSystemBusy)
+	}
+
+	voiceID := ""
+	if friend.Character != nil {
+		voiceID = friend.Character.VoiceID
+	}
+
+	audioData, err := s.audioSvc.TTS(ctx, text, voiceID)
+	if err != nil {
+		zap.L().Error("[friend service] synthesize speech failed", zap.Error(err))
+		return nil, errors.New(constants.ErrTTSFailed)
+	}
+	return audioData, nil
+}
+
 func (s *friendService) StreamTTS(ctx context.Context, friendID, userID uint, textCh <-chan string) (<-chan []byte, <-chan error, error) {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
@@ -149,7 +180,7 @@ func (s *friendService) StreamTTS(ctx context.Context, friendID, userID uint, te
 		voiceID = friend.Character.VoiceID
 	}
 
-	audioCh, errCh := s.audioSvc.TTS(ctx, textCh, voiceID)
+	audioCh, errCh := s.audioSvc.StreamTTS(ctx, textCh, voiceID)
 	return audioCh, errCh, nil
 }
 

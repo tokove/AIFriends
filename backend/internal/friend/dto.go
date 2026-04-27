@@ -30,12 +30,26 @@ type RemoveReq struct {
 }
 
 type ChatReq struct {
-	FriendID uint   `json:"friend_id" binding:"required"`
-	Message  string `json:"message" binding:"required"`
+	FriendID            uint   `json:"friend_id" binding:"required"`
+	Message             string `json:"message" binding:"required"`
+	UserMessageType     string `json:"user_message_type"`
+	UserAudio           string `json:"user_audio"`
+	UserASRText         string `json:"user_asr_text"`
+	UserAudioDurationMS int    `json:"user_audio_duration_ms"`
+	EnableTTS           bool   `json:"enable_tts"`
 }
 
 type MessageResp struct {
-	ID          uint   `json:"id"`
-	UserMessage string `json:"user_message"`
-	Output      string `json:"output"`
+	ID                  uint   `json:"id"`
+	UserMessage         string `json:"user_message"`
+	UserMessageType     string `json:"user_message_type"`
+	UserAudio           string `json:"user_audio"`
+	UserASRText         string `json:"user_asr_text"`
+	UserAudioDurationMS int    `json:"user_audio_duration_ms"`
+	Output              string `json:"output"`
+}
+
+type TTSReq struct {
+	FriendID uint   `json:"friend_id" binding:"required"`
+	Text     string `json:"text" binding:"required"`
 }

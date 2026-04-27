@@ -11,7 +11,36 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func (s *service) TTS(ctx context.Context, textCh <-chan string, voiceID string) (<-chan []byte, <-chan error) {
+func (s *service) TTS(ctx context.Context, text, voiceID string) ([]byte, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, errors.New(constants.ErrTTSFailed)
+	}
+
+	conn, err := s.dial()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	taskID := uuid.NewString()
+	if err := s.sendTTSStart(conn, taskID, voiceID); err != nil {
+		return nil, err
+	}
+	if err := waitForTaskStarted(ctx, conn); err != nil {
+		return nil, err
+	}
+	if err := s.sendTTSContent(conn, taskID, text); err != nil {
+		return nil, err
+	}
+	if err := s.sendASRFinish(conn, taskID); err != nil {
+		return nil, err
+	}
+
+	return receiveTTSAudio(ctx, conn)
+}
+
+func (s *service) StreamTTS(ctx context.Context, textCh <-chan string, voiceID string) (<-chan []byte, <-chan error) {
 	audioCh := make(chan []byte, 16)
 	errCh := make(chan error, 1)
 
@@ -133,6 +162,36 @@ func (s *service) sendTTSContent(conn *websocket.Conn, taskID, text string) erro
 		},
 	}
 	return writeWSJSON(conn, msg)
+}
+
+func receiveTTSAudio(ctx context.Context, conn *websocket.Conn) ([]byte, error) {
+	audioData := make([]byte, 0, 32*1024)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		raw, err := readWSMessage(conn)
+		if err != nil {
+			return nil, err
+		}
+
+		var msg asrEventMessage
+		if err := json.Unmarshal(raw, &msg); err == nil {
+			switch msg.Header.Event {
+			case constants.AudioTaskFinishedEvent:
+				return audioData, nil
+			case constants.AudioTaskFailedEvent:
+				return nil, errors.New(constants.ErrTTSFailed)
+			}
+			continue
+		}
+
+		audioData = append(audioData, raw...)
+	}
 }
 
 func (s *service) streamTTSSender(ctx context.Context, conn *websocket.Conn, taskID string, textCh <-chan string) error {

@@ -47,12 +47,17 @@ async function loadMore() {
       for (const message of newMessages) {
         emit('pushFrontMessage', {
           role: 'ai',
+          type: 'text',
           content: message.output,
           id: crypto.randomUUID()
         })
         emit('pushFrontMessage', {
           role: 'user',
+          type: message.user_message_type || 'text',
           content: message.user_message,
+          asrText: message.user_asr_text || '',
+          audioUrl: message.user_audio || '',
+          durationMs: message.user_audio_duration_ms || 0,
           id: crypto.randomUUID()
         })
         lastMessageId = message.id
@@ -109,6 +114,7 @@ defineExpose({
         :key="message.id"
         :message="message"
         :character="character"
+        :friend-id="friendId"
     />
   </div>
 </template>
