@@ -10,6 +10,7 @@ import (
 	"backend/internal/infra/db"
 	"backend/internal/infra/llm"
 	"backend/internal/infra/logger"
+	infraredis "backend/internal/infra/redis"
 	"backend/internal/middleware"
 	"backend/internal/user"
 	"backend/pkg/constants"
@@ -75,7 +76,7 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 	}
 	audioSvc := audio.NewService(&cfg.Audio)
 	friendRepo := friend.NewFriendRepository(basedb)
-	friendSvc := friend.NewFriendService(friendRepo, audioSvc, chatGraph, memoryGraph)
+	friendSvc := friend.NewFriendService(friendRepo, audioSvc, infraredis.NewCache(rdb), chatGraph, memoryGraph)
 	friendHdl := friend.NewFriendHandler(friendSvc)
 
 	public := r.Group("/api")

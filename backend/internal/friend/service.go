@@ -3,12 +3,15 @@ package friend
 import (
 	"backend/internal/friend/agent/graph"
 	"backend/internal/infra/audio"
+	infraredis "backend/internal/infra/redis"
 	"backend/internal/model"
 	"backend/pkg/constants"
+	"backend/pkg/utils"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,7 +26,7 @@ type FriendService interface {
 	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Friend, error)
 	RemoveFriend(ctx context.Context, friendID, userID uint) error
 	ASR(ctx context.Context, pcmData []byte) (string, error)
-	TTS(ctx context.Context, friendID, userID uint, text string) ([]byte, error)
+	TTS(ctx context.Context, friendID, messageID, userID uint) ([]byte, error)
 	StreamTTS(ctx context.Context, friendID, userID uint, textCh <-chan string) (<-chan []byte, <-chan error, error)
 	StreamChat(ctx context.Context, friendID, userID uint, userMsg string) (*schema.StreamReader[*schema.Message], string, error)
 	SaveMessage(ctx context.Context, msg *model.Message) error
@@ -35,6 +38,7 @@ type FriendService interface {
 type friendService struct {
 	repo        FriendRepository
 	audioSvc    audio.Service
+	cache       infraredis.Cache
 	chatGraph   compose.Runnable[graph.ChatState, *schema.Message]
 	memoryGraph compose.Runnable[graph.MemoryState, *schema.Message]
 }
@@ -42,12 +46,14 @@ type friendService struct {
 func NewFriendService(
 	repo FriendRepository,
 	audioSvc audio.Service,
+	cache infraredis.Cache,
 	chatGraph compose.Runnable[graph.ChatState, *schema.Message],
 	memoryGraph compose.Runnable[graph.MemoryState, *schema.Message],
 ) FriendService {
 	return &friendService{
 		repo:        repo,
 		audioSvc:    audioSvc,
+		cache:       cache,
 		chatGraph:   chatGraph,
 		memoryGraph: memoryGraph,
 	}
@@ -128,7 +134,7 @@ func (s *friendService) ASR(ctx context.Context, pcmData []byte) (string, error)
 	return text, nil
 }
 
-func (s *friendService) TTS(ctx context.Context, friendID, userID uint, text string) ([]byte, error) {
+func (s *friendService) TTS(ctx context.Context, friendID, messageID, userID uint) ([]byte, error) {
 	friend, err := s.repo.GetByID(ctx, friendID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -145,15 +151,52 @@ func (s *friendService) TTS(ctx context.Context, friendID, userID uint, text str
 		return nil, errors.New(constants.ErrSystemBusy)
 	}
 
+	msg, err := s.repo.GetMessageByID(ctx, messageID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New(constants.ErrFriendNotFound)
+		}
+		zap.L().Error("[friend service] GetMessageByID db error for tts", zap.Error(err))
+		return nil, errors.New(constants.ErrSystemBusy)
+	}
+	if msg.FriendID != friendID {
+		return nil, errors.New(constants.ErrFriendNotFound)
+	}
+	text := strings.TrimSpace(msg.Output)
+	if text == "" {
+		return nil, errors.New(constants.ErrTTSFailed)
+	}
+
 	voiceID := ""
 	if friend.Character != nil {
 		voiceID = friend.Character.VoiceID
+	}
+
+	cacheKey := fmt.Sprintf("%s%d", constants.CacheKeyTTSMessage, messageID)
+	if data, cacheErr := s.cache.Get(ctx, cacheKey); cacheErr == nil {
+		relPath := strings.TrimSpace(string(data))
+		if utils.FileExists(relPath) {
+			return utils.ReadFileBytes(relPath)
+		}
+	}
+
+	relPath := filepath.Join(constants.DirMessageTTS, fmt.Sprintf("%d", friendID), fmt.Sprintf("%d.mp3", messageID))
+	if utils.FileExists(relPath) {
+		_ = s.cache.Set(ctx, cacheKey, relPath, constants.TTSAudioCacheTTL)
+		return utils.ReadFileBytes(relPath)
 	}
 
 	audioData, err := s.audioSvc.TTS(ctx, text, voiceID)
 	if err != nil {
 		zap.L().Error("[friend service] synthesize speech failed", zap.Error(err))
 		return nil, errors.New(constants.ErrTTSFailed)
+	}
+	if err := utils.WriteFileBytes(relPath, audioData); err != nil {
+		zap.L().Error("[friend service] save tts audio failed", zap.Error(err), zap.Uint("messageID", messageID))
+		return nil, errors.New(constants.ErrSystemBusy)
+	}
+	if err := s.cache.Set(ctx, cacheKey, relPath, constants.TTSAudioCacheTTL); err != nil {
+		zap.L().Warn("[friend service] cache tts path failed", zap.Error(err), zap.Uint("messageID", messageID))
 	}
 	return audioData, nil
 }

@@ -35,6 +35,13 @@ function handleAddToLastMessage(delta) {
   chatHistoryRef.value.scrollToBottom()
 }
 
+function handleBindLastAIMessageId(messageId) {
+  const lastMessage = history.value.at(-1)
+  if (!lastMessage) return
+  lastMessage.messageId = messageId
+  lastMessage.id = `ai-${messageId}`
+}
+
 function handlePushFrontMessage(msg) {
   history.value.unshift(msg)
 }
@@ -95,6 +102,7 @@ defineExpose({
           :enable-tts="enableTts"
           @pushBackMessage="handlePushBackMessage"
           @addToLastMessage="handleAddToLastMessage"
+          @bindLastAIMessageId="handleBindLastAIMessageId"
           @toggleVoice="handleToggleVoice"
       />
       <MicroPhone

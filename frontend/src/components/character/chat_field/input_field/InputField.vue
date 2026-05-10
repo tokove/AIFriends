@@ -5,7 +5,7 @@ import {ref, useTemplateRef} from "vue";
 import streamApi from "@/js/http/streamApi.js";
 
 const props = defineProps(['friendId', 'enableTts'])
-const emit = defineEmits(['pushBackMessage', 'addToLastMessage', 'toggleVoice'])
+const emit = defineEmits(['pushBackMessage', 'addToLastMessage', 'bindLastAIMessageId', 'toggleVoice'])
 const inputRef = useTemplateRef('input-ref')
 const message = ref('')
 let processId = 0
@@ -147,7 +147,7 @@ async function sendMessage(content, messageMeta = null) {
     durationMs: messageMeta?.durationMs || 0,
     id: crypto.randomUUID()
   })
-  emit('pushBackMessage', {role: 'ai', type: 'text', content: '', id: crypto.randomUUID()})
+  emit('pushBackMessage', {role: 'ai', type: 'text', content: '', id: crypto.randomUUID(), messageId: 0})
 
   try {
     await streamApi('/api/friend/message/chat/', {
@@ -174,6 +174,10 @@ async function sendMessage(content, messageMeta = null) {
         if (data.content) {
           streamBuffer += data.content
           scheduleStreamFlush()
+        }
+
+        if (data.message_id) {
+          emit('bindLastAIMessageId', data.message_id)
         }
 
         if (props.enableTts && data.audio) {

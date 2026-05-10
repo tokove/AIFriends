@@ -98,6 +98,10 @@ func LoadConfig(path string) *Config {
 		log.Println("Warning: .env file not found, using system environment variables")
 	}
 
+	if configPath := os.Getenv("CONFIG_PATH"); configPath != "" {
+		path = configPath
+	}
+
 	viper.SetConfigFile(path)
 
 	if err := viper.ReadInConfig(); err != nil {

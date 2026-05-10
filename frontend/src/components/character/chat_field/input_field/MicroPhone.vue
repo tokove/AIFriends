@@ -2,14 +2,12 @@
 import KeyboardIcon from "@/components/character/icons/KeyboardIcon.vue";
 import {onBeforeUnmount, onMounted, ref} from "vue";
 import {MicVAD} from "@ricky0123/vad-web";
-import ortWasmSimdThreadedUrl from "../../../../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs?url";
 import api from "@/js/http/api.js";
 import CONFIG_API from "@/js/config/config.js";
 
 const emit = defineEmits(['close', 'send', 'stop'])
 const isSpeaking = ref(false)
 let vadInstance = null;
-const ortWASMBasePath = ortWasmSimdThreadedUrl.slice(0, ortWasmSimdThreadedUrl.lastIndexOf("/") + 1)
 const AUDIO_SAMPLE_RATE = 16000
 
 const startRecording = async () => {
@@ -17,7 +15,7 @@ const startRecording = async () => {
   try {
     vadInstance = await MicVAD.new({
       baseAssetPath: baseUrl,
-      onnxWASMBasePath: ortWASMBasePath,
+      onnxWASMBasePath: baseUrl,
       onSpeechStart: () => {
         isSpeaking.value = true;
         emit("stop")

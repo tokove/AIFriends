@@ -105,6 +105,37 @@ func RemoveFile(relPath string) error {
 	return nil
 }
 
+func WriteFileBytes(relPath string, data []byte) error {
+	if relPath == "" {
+		return errors.New("文件路径不能为空")
+	}
+
+	fullPath := filepath.Join("media", relPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), os.ModePerm); err != nil {
+		return err
+	}
+
+	return os.WriteFile(fullPath, data, 0o644)
+}
+
+func ReadFileBytes(relPath string) ([]byte, error) {
+	fullPath := filepath.Join("media", relPath)
+	return os.ReadFile(fullPath)
+}
+
+func FileExists(relPath string) bool {
+	if relPath == "" {
+		return false
+	}
+
+	fullPath := filepath.Join("media", relPath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
 func SplitText(text string, chunkSize int, overlap int) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {

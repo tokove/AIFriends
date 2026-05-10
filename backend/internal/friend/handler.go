@@ -253,7 +253,7 @@ func (h *friendHandler) TTS(c *gin.Context) {
 		return
 	}
 
-	audioData, err := h.svc.TTS(c.Request.Context(), req.FriendID, userID, req.Text)
+	audioData, err := h.svc.TTS(c.Request.Context(), req.FriendID, req.MessageID, userID)
 	if err != nil {
 		c.JSON(friendErrorStatus(err), gin.H{"result": err.Error()})
 		return
@@ -293,16 +293,6 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive") // 保持长连接获取信息
 	c.Writer.Flush()
 
-	type streamEvent struct {
-		Content      string
-		AudioBase64  string
-		Err          error
-		Interrupted  bool
-		InputTokens  int
-		OutputTokens int
-		TotalTokens  int
-	}
-
 	var finalOutput string
 	var inputTokens, outputTokens, totalTokens int
 	ttsInputCh := make(chan string, 16)
@@ -322,9 +312,7 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer func() {
 			if ttsEnabled {
 				close(ttsInputCh)
@@ -370,12 +358,10 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 				TotalTokens:  curTotalTokens,
 			}
 		}
-	}()
+	})
 
 	if ttsEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			currentAudioErrCh := audioErrCh
 			for {
 				select {
@@ -399,7 +385,7 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	go func() {
@@ -417,52 +403,49 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 	}
 
 	// 保存消息并检查是否更新记忆（当前按每 2 条触发一次）
-	saveAndUpdateMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) {
-		saveCtx := context.Background()
+	saveAndUpdateMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) uint {
+		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
 		msg := &model.Message{
-			FriendID:            req.FriendID,
-			UserMessage:         truncateString(req.Message, constants.MaxMsgLen),
-			UserMessageType:     constants.MessageTypeText,
-			UserAudio:           req.UserAudio,
-			UserASRText:         truncateString(req.UserASRText, constants.MaxMsgLen),
-			UserAudioDurationMS: req.UserAudioDurationMS,
-			Input:               inputStr,
-			Output:              truncateString(currentFinalOutput, constants.MaxMsgLen),
-			InputTokens:         inTok,
-			OutputTokens:        outTok,
-			TotalTokens:         totTok,
-		}
-		if req.UserMessageType == constants.MessageTypeVoice {
-			msg.UserMessageType = constants.MessageTypeVoice
-			if msg.UserASRText == "" {
-				msg.UserASRText = msg.UserMessage
-			}
+			FriendID:     req.FriendID,
+			UserMessage:  truncateString(req.Message, constants.MaxMsgLen),
+			Input:        inputStr,
+			Output:       truncateString(currentFinalOutput, constants.MaxMsgLen),
+			InputTokens:  inTok,
+			OutputTokens: outTok,
+			TotalTokens:  totTok,
 		}
 
 		if err := h.svc.SaveMessage(saveCtx, msg); err != nil {
 			zap.L().Error("[friend handler] SaveMessage error", zap.Error(err))
-			return
+			return 0
 		}
 
 		if isInterrupted {
 			zap.L().Info("[friend handler] 对话被中断，跳过记忆总结", zap.Uint("friend_id", req.FriendID))
-			return
+			return msg.ID
 		}
 
-		count, err := h.svc.GetMessageCount(saveCtx, req.FriendID)
-		if err == nil && count > 0 && count%2 == 0 {
-			if err := h.svc.UpdateMemory(context.Background(), req.FriendID); err != nil {
-				zap.L().Error("[friend handler] 记忆总结失败", zap.Error(err))
+		go func(friendID uint) {
+			count, err := h.svc.GetMessageCount(context.Background(), friendID)
+			if err == nil && count > 0 && count%2 == 0 {
+				if err := h.svc.UpdateMemory(context.Background(), friendID); err != nil {
+					zap.L().Error("[friend handler] 记忆总结失败", zap.Error(err))
+				}
 			}
-		}
+		}(req.FriendID)
+		return msg.ID
 	}
 
 	c.Stream(func(w io.Writer) bool {
 		event, ok := <-eventCh
 		if !ok {
+			messageID := saveAndUpdateMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
+			if messageID > 0 {
+				c.SSEvent("message", gin.H{"message_id": messageID})
+			}
 			c.SSEvent("message", "[DONE]")
-			go saveAndUpdateMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
 			return false
 		}
 
@@ -535,13 +518,9 @@ func (h *friendHandler) GetMessageHistory(c *gin.Context) {
 	resps := make([]MessageResp, 0, len(msgs))
 	for _, m := range msgs {
 		resps = append(resps, MessageResp{
-			ID:                  m.ID,
-			UserMessage:         m.UserMessage,
-			UserMessageType:     m.UserMessageType,
-			UserAudio:           m.UserAudio,
-			UserASRText:         m.UserASRText,
-			UserAudioDurationMS: m.UserAudioDurationMS,
-			Output:              m.Output,
+			ID:          m.ID,
+			UserMessage: m.UserMessage,
+			Output:      m.Output,
 		})
 	}
 

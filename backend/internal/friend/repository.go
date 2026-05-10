@@ -12,6 +12,7 @@ import (
 type FriendRepository interface {
 	GetFriend(ctx context.Context, charID, userID uint) (*model.Friend, error)
 	GetByID(ctx context.Context, friendID uint) (*model.Friend, error)
+	GetMessageByID(ctx context.Context, messageID uint) (*model.Message, error)
 	AddFriend(ctx context.Context, friend *model.Friend) error
 	RemoveFriend(ctx context.Context, friendID uint) error
 	GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Friend, error)
@@ -53,6 +54,14 @@ func (r *friendRepository) GetByID(ctx context.Context, friendID uint) (*model.F
 	return &friend, nil
 }
 
+func (r *friendRepository) GetMessageByID(ctx context.Context, messageID uint) (*model.Message, error) {
+	var msg model.Message
+	if err := r.db.WithContext(ctx).First(&msg, messageID).Error; err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
 func (r *friendRepository) AddFriend(ctx context.Context, f *model.Friend) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.Friend
@@ -63,13 +72,7 @@ func (r *friendRepository) AddFriend(ctx context.Context, f *model.Friend) error
 
 		if err == nil {
 			if existing.DeletedAt.Valid {
-				if err := tx.Unscoped().Model(&model.Friend{}).Where("id = ?", existing.ID).Update("deleted_at", nil).Error; err != nil {
-					return err
-				}
-
-				return tx.Model(&model.Character{}).
-					Where("id = ?", existing.CharacterID).
-					Update("friend_count", gorm.Expr("friend_count + ?", 1)).Error
+				return tx.Unscoped().Model(&model.Friend{}).Where("id = ?", existing.ID).Update("deleted_at", nil).Error
 			}
 			return nil
 		}
@@ -78,31 +81,12 @@ func (r *friendRepository) AddFriend(ctx context.Context, f *model.Friend) error
 			return err
 		}
 
-		if err := tx.Create(f).Error; err != nil {
-			return err
-		}
-
-		return tx.Model(&model.Character{}).
-			Where("id = ?", f.CharacterID).
-			Update("friend_count", gorm.Expr("friend_count + ?", 1)).Error
+		return tx.Create(f).Error
 	})
 }
 
 func (r *friendRepository) RemoveFriend(ctx context.Context, fid uint) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var f model.Friend
-		if err := tx.Select("character_id").First(&f, fid).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Delete(&model.Friend{}, fid).Error; err != nil {
-			return err
-		}
-
-		return tx.Model(&model.Character{}).
-			Where("id = ?", f.CharacterID).
-			Update("friend_count", gorm.Expr("friend_count - ?", 1)).Error
-	})
+	return r.db.WithContext(ctx).Delete(&model.Friend{}, fid).Error
 }
 
 func (r *friendRepository) GetList(ctx context.Context, userID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Friend, error) {
@@ -161,24 +145,7 @@ func (r *friendRepository) SaveMessageTx(ctx context.Context, msg *model.Message
 			return err
 		}
 
-		preview := []rune(msg.Output)
-		previewStr := string(preview)
-		if len(preview) > 50 {
-			previewStr = string(preview[:50]) + "..."
-		}
-		if err := tx.Model(&model.Friend{}).Where("id = ?", msg.FriendID).Updates(map[string]any{
-			"chat_count":   gorm.Expr("chat_count + 1"),
-			"last_message": previewStr,
-		}).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Model(&model.Character{}).
-			Where("id = (SELECT character_id FROM friends WHERE id = ?)", msg.FriendID).
-			Updates(map[string]any{
-				"total_chat_count":  gorm.Expr("total_chat_count + 1"),
-				"recent_chat_count": gorm.Expr("recent_chat_count + 1"),
-			}).Error; err != nil {
+		if err := tx.Model(&model.Friend{}).Where("id = ?", msg.FriendID).Update("chat_count", gorm.Expr("chat_count + 1")).Error; err != nil {
 			return err
 		}
 

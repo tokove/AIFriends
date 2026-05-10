@@ -192,14 +192,16 @@ func (s *charService) GetCharSingle(ctx context.Context, charID uint) (*GetSingl
 		zap.L().Error("[char service] GetByID db error", zap.Uint("charID", charID), zap.Error(err))
 		return nil, errors.New("系统繁忙，请稍后再试")
 	}
-	return &GetSingleResp{
+	resp := &GetSingleResp{
 		ID:              charID,
 		Name:            char.Name,
 		VoiceID:         char.VoiceID,
 		Profile:         char.Profile,
 		Photo:           constants.StaticBaseURL + char.Photo,
 		BackgroundImage: constants.StaticBaseURL + char.BackgroundImage,
-	}, nil
+	}
+
+	return resp, nil
 }
 
 func (s *charService) GetUserProfile(ctx context.Context, userID uint) (*model.User, error) {

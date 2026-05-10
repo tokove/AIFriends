@@ -39,6 +39,16 @@ type ChatReq struct {
 	EnableTTS           bool   `json:"enable_tts"`
 }
 
+type streamEvent struct {
+	Content      string
+	AudioBase64  string
+	Err          error
+	Interrupted  bool
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
 type MessageResp struct {
 	ID                  uint   `json:"id"`
 	UserMessage         string `json:"user_message"`
@@ -50,6 +60,6 @@ type MessageResp struct {
 }
 
 type TTSReq struct {
-	FriendID uint   `json:"friend_id" binding:"required"`
-	Text     string `json:"text" binding:"required"`
+	FriendID  uint `json:"friend_id" binding:"required"`
+	MessageID uint `json:"message_id" binding:"required"`
 }

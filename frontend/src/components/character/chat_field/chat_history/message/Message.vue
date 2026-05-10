@@ -24,7 +24,7 @@ function playUserAudio() {
 }
 
 async function playAIAudio() {
-  if (!props.message?.content) return
+  if (!props.message?.messageId) return
   if (isPlaying.value) {
     currentAudio?.pause()
     isPlaying.value = false
@@ -35,7 +35,7 @@ async function playAIAudio() {
   try {
     const res = await api.post('/api/friend/message/tts', {
       friend_id: props.friendId,
-      text: props.message.content,
+      message_id: props.message.messageId,
     }, {
       responseType: 'blob'
     })

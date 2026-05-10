@@ -170,7 +170,7 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 		return
 	}
 
-	char, err := h.svc.GetCharSingle(c.Request.Context(), uint(charID))
+	resp, err := h.svc.GetCharSingle(c.Request.Context(), uint(charID))
 	if err != nil {
 		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
 		return
@@ -178,7 +178,7 @@ func (h *charHandler) GetCharSingle(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"result":    "success",
-		"character": char,
+		"character": resp,
 	})
 }
 

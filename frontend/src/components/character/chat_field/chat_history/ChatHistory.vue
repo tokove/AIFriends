@@ -49,7 +49,8 @@ async function loadMore() {
           role: 'ai',
           type: 'text',
           content: message.output,
-          id: crypto.randomUUID()
+          id: `ai-${message.id}`,
+          messageId: message.id,
         })
         emit('pushFrontMessage', {
           role: 'user',
@@ -58,7 +59,7 @@ async function loadMore() {
           asrText: message.user_asr_text || '',
           audioUrl: message.user_audio || '',
           durationMs: message.user_audio_duration_ms || 0,
-          id: crypto.randomUUID()
+          id: `user-${message.id}`,
         })
         lastMessageId = message.id
       }

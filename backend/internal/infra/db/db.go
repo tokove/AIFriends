@@ -27,7 +27,8 @@ func InitDB(cfg *config.Config) {
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+		PrepareStmt: true,
+		Logger:      logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		zap.L().Fatal("failed to connect database", zap.Error(err))
@@ -38,9 +39,10 @@ func InitDB(cfg *config.Config) {
 		zap.L().Fatal("failed to get sql.DB from gorm", zap.Error(err))
 	}
 
-	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxIdleConns(100)
 	sqlDB.SetMaxOpenConns(50)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
 	DB = db
 	zap.L().Info("Database connected:", zap.String("db", cfg.DB.Name))
