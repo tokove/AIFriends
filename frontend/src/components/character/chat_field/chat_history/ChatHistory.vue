@@ -7,6 +7,7 @@ const props = defineProps(['history', 'friendId', 'character'])
 const emit = defineEmits(['pushFrontMessage'])
 const scrollRef = useTemplateRef('scroll-ref')
 const sentinelRef = useTemplateRef('sentinel-ref')
+const messageRefs = useTemplateRef('message-refs')
 let isLoading = false
 let hasMessages = true
 let lastMessageId = 0
@@ -102,8 +103,15 @@ async function scrollToBottom() {
   scrollRef.value.scrollTop = scrollRef.value.scrollHeight
 }
 
+function stopAudio() {
+  messageRefs.value?.forEach(message => {
+    message?.stopAudio?.()
+  })
+}
+
 defineExpose({
   scrollToBottom,
+  stopAudio,
 })
 </script>
 
@@ -111,6 +119,7 @@ defineExpose({
   <div ref="scroll-ref" class="absolute top-18 left-1 right-1 bottom-19 overflow-y-scroll no-scrollbar">
     <div ref="sentinel-ref" class="h-2"></div>
     <Message
+        ref="message-refs"
         v-for="message in history"
         :key="message.id"
         :message="message"

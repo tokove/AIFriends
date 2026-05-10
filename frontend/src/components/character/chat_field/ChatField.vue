@@ -12,6 +12,7 @@ const chatHistoryRef = useTemplateRef('chat-history-ref')
 const history = ref([])
 const isVoiceMode = ref(false)
 const enableTts = ref(true)
+let lastScrollTask = null
 
 async function showModal() {
   modalRef.value.showModal()
@@ -22,6 +23,11 @@ async function showModal() {
 
 function handleClose() {
   inputRef.value.close()
+  if (lastScrollTask) {
+    clearTimeout(lastScrollTask)
+    lastScrollTask = null
+  }
+  chatHistoryRef.value?.stopAudio()
   isVoiceMode.value = false
 }
 
@@ -31,8 +37,13 @@ function handlePushBackMessage(msg) {
 }
 
 function handleAddToLastMessage(delta) {
+  if (!delta) return
   history.value.at(-1).content += delta
-  chatHistoryRef.value.scrollToBottom()
+  if (lastScrollTask) return
+  lastScrollTask = setTimeout(() => {
+    chatHistoryRef.value.scrollToBottom()
+    lastScrollTask = null
+  }, 0)
 }
 
 function handleBindLastAIMessageId(messageId) {

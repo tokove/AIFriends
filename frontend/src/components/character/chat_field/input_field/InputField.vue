@@ -9,119 +9,77 @@ const emit = defineEmits(['pushBackMessage', 'addToLastMessage', 'bindLastAIMess
 const inputRef = useTemplateRef('input-ref')
 const message = ref('')
 let processId = 0
-const STREAM_FLUSH_INTERVAL = 32
-let streamBuffer = ''
-let flushTimer = null
-let currentAudio = null
-let currentAudioUrl = ''
-let mediaSource = null
-let sourceBuffer = null
-let sourceBufferQueue = []
-let audioStreamFinished = false
-
-function clearFlushTimer() {
-  if (flushTimer) {
-    clearTimeout(flushTimer)
-    flushTimer = null
-  }
-}
-
-function flushBufferedStream() {
-  if (!streamBuffer) return
-  emit('addToLastMessage', streamBuffer)
-  streamBuffer = ''
-}
-
-function scheduleStreamFlush() {
-  if (flushTimer) return
-  flushTimer = setTimeout(() => {
-    flushBufferedStream()
-    flushTimer = null
-  }, STREAM_FLUSH_INTERVAL)
-}
+let audioContext = null
+let audioWorkletNode = null
+let nextAudioTime = 0
+const pcmSampleRate = 24000
 
 function focus() {
   inputRef.value.focus()
 }
 
 function stopAudio() {
-  sourceBufferQueue = []
-  audioStreamFinished = false
-  sourceBuffer = null
-  mediaSource = null
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
+  if (audioContext) {
+    audioContext.close().catch(() => {})
+    audioContext = null
   }
-  if (currentAudioUrl) {
-    URL.revokeObjectURL(currentAudioUrl)
-    currentAudioUrl = ''
-  }
+  audioWorkletNode = null
+  nextAudioTime = 0
 }
 
-function decodeBase64Audio(base64) {
+function decodeBase64PCM(base64) {
   const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
+  const sampleCount = Math.floor(binary.length / 2)
+  const samples = new Float32Array(sampleCount)
+  for (let i = 0; i < sampleCount; i++) {
+    const lo = binary.charCodeAt(i * 2)
+    const hi = binary.charCodeAt(i * 2 + 1)
+    let value = (hi << 8) | lo
+    if (value >= 0x8000) value -= 0x10000
+    samples[i] = value / 0x8000
   }
-  return bytes
+  return samples
 }
 
-function flushSourceBuffer() {
-  if (!sourceBuffer || sourceBuffer.updating) {
+function ensureAudioContext() {
+  if (audioContext) {
     return
   }
-
-  if (sourceBufferQueue.length > 0) {
-    sourceBuffer.appendBuffer(sourceBufferQueue.shift())
-    return
-  }
-
-  if (audioStreamFinished && mediaSource && mediaSource.readyState === 'open') {
-    try {
-      mediaSource.endOfStream()
-    } catch (err) {
-    }
-  }
+  audioContext = new AudioContext({ sampleRate: pcmSampleRate })
+  nextAudioTime = audioContext.currentTime
+  audioContext.audioWorklet.addModule('/pcm-player-worklet.js')
+      .then(() => {
+        if (!audioContext) return
+        audioWorkletNode = new AudioWorkletNode(audioContext, 'pcm-player')
+        audioWorkletNode.connect(audioContext.destination)
+      })
+      .catch(() => {
+        audioWorkletNode = null
+      })
 }
 
-function ensureAudioStream() {
-  if (mediaSource || typeof MediaSource === 'undefined') {
-    return
-  }
-
-  mediaSource = new MediaSource()
-  currentAudioUrl = URL.createObjectURL(mediaSource)
-  currentAudio = new Audio(currentAudioUrl)
-
-  mediaSource.addEventListener('sourceopen', () => {
-    if (!mediaSource || mediaSource.readyState !== 'open' || sourceBuffer) {
-      return
-    }
-
-    sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg')
-    sourceBuffer.mode = 'sequence'
-    sourceBuffer.addEventListener('updateend', flushSourceBuffer)
-    flushSourceBuffer()
-  }, { once: true })
-
-  currentAudio.play().catch(() => {
-  })
-}
-
-function enqueueAudioChunk(base64) {
+function enqueuePCMChunk(base64) {
   if (!base64) return
 
-  console.debug('[tts] received audio chunk')
-  ensureAudioStream()
-  sourceBufferQueue.push(decodeBase64Audio(base64))
-  flushSourceBuffer()
-}
+  ensureAudioContext()
+  const samples = decodeBase64PCM(base64)
+  if (!samples.length) return
 
-function finishAudioStream() {
-  audioStreamFinished = true
-  flushSourceBuffer()
+  if (audioWorkletNode) {
+    audioWorkletNode.port.postMessage({ type: 'pcm', samples: samples.buffer }, [samples.buffer])
+    return
+  }
+
+  const buffer = audioContext.createBuffer(1, samples.length, pcmSampleRate)
+  buffer.copyToChannel(samples, 0)
+
+  const source = audioContext.createBufferSource()
+  source.buffer = buffer
+  source.connect(audioContext.destination)
+
+  const startTime = Math.max(nextAudioTime, audioContext.currentTime + 0.02)
+  source.start(startTime)
+  nextAudioTime = startTime + buffer.duration
 }
 
 async function sendMessage(content, messageMeta = null) {
@@ -131,10 +89,8 @@ async function sendMessage(content, messageMeta = null) {
 
   stopAudio()
   if (props.enableTts) {
-    ensureAudioStream()
+    ensureAudioContext()
   }
-  clearFlushTimer()
-  streamBuffer = ''
 
   message.value = ""
 
@@ -150,30 +106,27 @@ async function sendMessage(content, messageMeta = null) {
   emit('pushBackMessage', {role: 'ai', type: 'text', content: '', id: crypto.randomUUID(), messageId: 0})
 
   try {
+    const body = {
+      friend_id: props.friendId,
+      message: content,
+      user_message_type: messageMeta?.type || 'text',
+      user_audio: messageMeta?.audioUrl || '',
+      user_asr_text: messageMeta?.asrText || '',
+      user_audio_duration_ms: messageMeta?.durationMs || 0,
+      enable_tts: !!props.enableTts,
+    }
+
     await streamApi('/api/friend/message/chat/', {
-      body: {
-        friend_id: props.friendId,
-        message: content,
-        user_message_type: messageMeta?.type || 'text',
-        user_audio: messageMeta?.audioUrl || '',
-        user_asr_text: messageMeta?.asrText || '',
-        user_audio_duration_ms: messageMeta?.durationMs || 0,
-        enable_tts: !!props.enableTts,
-      },
+      body,
       onmessage(data, isDone) {
         if (curId !== processId) return
 
         if (isDone) {
-          flushBufferedStream()
-          if (props.enableTts) {
-            finishAudioStream()
-          }
           return
         }
 
         if (data.content) {
-          streamBuffer += data.content
-          scheduleStreamFlush()
+          emit('addToLastMessage', data.content)
         }
 
         if (data.message_id) {
@@ -181,7 +134,7 @@ async function sendMessage(content, messageMeta = null) {
         }
 
         if (props.enableTts && data.audio) {
-          enqueueAudioChunk(data.audio)
+          enqueuePCMChunk(data.audio)
         }
       },
       onerror(err) {
@@ -189,10 +142,6 @@ async function sendMessage(content, messageMeta = null) {
     })
   } catch (err) {
   } finally {
-    if (curId === processId) {
-      clearFlushTimer()
-      flushBufferedStream()
-    }
   }
 }
 
@@ -205,8 +154,6 @@ async function handleSend() {
 function close() {
   ++ processId
   stopAudio()
-  clearFlushTimer()
-  streamBuffer = ''
 }
 
 defineExpose({

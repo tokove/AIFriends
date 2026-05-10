@@ -1,5 +1,5 @@
 <script setup>
-import {computed, ref} from "vue";
+import {computed, onBeforeUnmount, ref} from "vue";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 
@@ -7,6 +7,8 @@ const props = defineProps(['message', 'character', 'friendId'])
 const user = useUserStore()
 const isPlaying = ref(false)
 let currentAudio = null
+let currentAudioUrl = ''
+let playbackRequestId = 0
 
 const durationLabel = computed(() => {
   const duration = Number(props.message?.durationMs || 0)
@@ -16,21 +18,46 @@ const durationLabel = computed(() => {
 
 function playUserAudio() {
   if (!props.message?.audioUrl) return
-  if (currentAudio) {
-    currentAudio.pause()
+  if (isPlaying.value) {
+    stopAudio()
+    return
   }
   currentAudio = new Audio(props.message.audioUrl)
-  currentAudio.play().catch(() => {})
+  currentAudio.onended = () => {
+    isPlaying.value = false
+  }
+  currentAudio.onpause = () => {
+    isPlaying.value = false
+  }
+  isPlaying.value = true
+  currentAudio.play().catch(() => {
+    isPlaying.value = false
+  })
+}
+
+function stopAudio() {
+  playbackRequestId += 1
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio.currentTime = 0
+    currentAudio = null
+  }
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl)
+    currentAudioUrl = ''
+  }
+  isPlaying.value = false
 }
 
 async function playAIAudio() {
   if (!props.message?.messageId) return
   if (isPlaying.value) {
-    currentAudio?.pause()
-    isPlaying.value = false
+    stopAudio()
     return
   }
 
+  const requestId = playbackRequestId + 1
+  playbackRequestId = requestId
   isPlaying.value = true
   try {
     const res = await api.post('/api/friend/message/tts', {
@@ -39,27 +66,38 @@ async function playAIAudio() {
     }, {
       responseType: 'blob'
     })
+    if (requestId !== playbackRequestId) return
+
     const url = URL.createObjectURL(res.data)
-    if (currentAudio) {
-      currentAudio.pause()
+    currentAudioUrl = url
+    const audio = new Audio(url)
+    currentAudio = audio
+    audio.onended = () => {
+      stopAudio()
     }
-    currentAudio = new Audio(url)
-    currentAudio.onended = () => {
-      URL.revokeObjectURL(url)
-      isPlaying.value = false
+    audio.onerror = () => {
+      stopAudio()
     }
-    currentAudio.onerror = () => {
-      URL.revokeObjectURL(url)
-      isPlaying.value = false
+    audio.onpause = () => {
+      if (currentAudio === audio) {
+        isPlaying.value = false
+      }
     }
-    currentAudio.onpause = () => {
-      isPlaying.value = false
-    }
-    await currentAudio.play()
+    await audio.play()
   } catch {
-    isPlaying.value = false
+    if (requestId === playbackRequestId) {
+      isPlaying.value = false
+    }
   }
 }
+
+onBeforeUnmount(() => {
+  stopAudio()
+})
+
+defineExpose({
+  stopAudio,
+})
 </script>
 
 <template>
@@ -70,20 +108,26 @@ async function playAIAudio() {
           <img :src="character.photo"  alt=""/>
         </div>
       </div>
-      <div class="group relative max-w-[80%]">
+      <div class="group flex items-start gap-1">
         <div class="chat-bubble whitespace-pre-wrap break-all">{{ message.content }}</div>
         <button
-            class="absolute -right-3 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-white/92 text-slate-600 shadow-sm ring-1 ring-black/5 opacity-0 transition-all group-hover:opacity-100 hover:bg-white"
+            class="mt-1 flex h-5 min-w-8 shrink-0 items-center justify-center rounded-md bg-white/92 px-1.5 text-slate-600 opacity-0 shadow-sm ring-1 ring-black/5 transition-all group-hover:opacity-100 hover:bg-white"
             :class="{ 'opacity-100': isPlaying }"
             @click="playAIAudio"
         >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <span v-if="isPlaying" class="wave-container" aria-hidden="true">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+          </span>
+          <svg v-else viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M11 5L6 9H2V15H6L11 19V5Z"
                   stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             <path d="M15 9C16.2 10.2 16.2 13.8 15 15"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" :class="{ 'wave-pulse': isPlaying }"/>
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M17.5 6.5C20.5 9.5 20.5 14.5 17.5 17.5"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" :class="{ 'wave-pulse delay-150': isPlaying }"/>
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
         </button>
       </div>
@@ -119,16 +163,42 @@ async function playAIAudio() {
   gap: 0.5rem;
 }
 
-.wave-pulse {
-  animation: wavePulse 0.9s ease-in-out infinite;
+.wave-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.delay-150 {
+.bar {
+  width: 2px;
+  height: 7px;
+  background: #007bff;
+  border-radius: 999px;
+  animation: jump 0.9s infinite ease-in-out;
+}
+
+.bar:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.bar:nth-child(2) {
   animation-delay: 0.15s;
 }
 
-@keyframes wavePulse {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
+.bar:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.bar:nth-child(4) {
+  animation-delay: 0.45s;
+}
+
+@keyframes jump {
+  0%, 100% {
+    height: 5px;
+  }
+  50% {
+    height: 13px;
+  }
 }
 </style>
