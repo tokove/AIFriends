@@ -88,6 +88,7 @@ func SetupRouter(mode string, basedb *gorm.DB, cfg *config.Config, rdb *redis.Cl
 
 		// character
 		public.GET("/create/character/get_list", charHdl.GetCharList)
+		public.GET("/create/character/voices", charHdl.GetVoices)
 
 		// homepage
 		public.GET("/homepage/index", charHdl.HomeOrSearch)

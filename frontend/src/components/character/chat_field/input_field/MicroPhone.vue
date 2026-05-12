@@ -12,10 +12,16 @@ const AUDIO_SAMPLE_RATE = 16000
 
 const startRecording = async () => {
   const baseUrl = CONFIG_API.VAD_URL;
+  const ortWasmPaths = {
+    mjs: import.meta.env.DEV
+        ? '/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs'
+        : `${baseUrl}ort-wasm-simd-threaded.mjs`,
+    wasm: `${baseUrl}ort-wasm-simd-threaded.wasm`,
+  }
   try {
     vadInstance = await MicVAD.new({
       baseAssetPath: baseUrl,
-      onnxWASMBasePath: baseUrl,
+      onnxWASMBasePath: ortWasmPaths,
       onSpeechStart: () => {
         isSpeaking.value = true;
         emit("stop")
@@ -25,6 +31,7 @@ const startRecording = async () => {
         sendToBackend(audio);
       },
       ortConfig: (ort) => {
+        ort.env.wasm.wasmPaths = ortWasmPaths;
         ort.env.logLevel = "error";
       },
       positiveSpeechThreshold: 0.8,

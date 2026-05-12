@@ -1,108 +1,56 @@
 package audio
 
 import (
-	"backend/pkg/constants"
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
-	gorillawebsocket "github.com/gorilla/websocket"
+	"github.com/gorilla/websocket"
 )
 
 func (s *service) ASR(ctx context.Context, pcmData []byte) (string, error) {
 	if len(pcmData) == 0 {
-		return "", errors.New(constants.ErrAudioNotFound)
+		return "", errors.New("音频不存在")
 	}
-
-	conn, err := s.dial()
-	if err != nil {
-		return "", err
-	}
-	defer conn.Close()
-
-	taskID := uuid.NewString()
-	if err := s.sendASRStart(conn, taskID); err != nil {
-		return "", err
-	}
-	if err := waitForTaskStarted(ctx, conn); err != nil {
-		return "", err
-	}
-	if err := sendASRAudio(ctx, conn, pcmData); err != nil {
-		return "", err
-	}
-	if err := s.sendASRFinish(conn, taskID); err != nil {
-		return "", err
-	}
-
-	return receiveASRText(ctx, conn)
+	return s.runASRTasks(ctx, pcmData)
 }
 
-// 以下是对接阿里云的流程
-func (s *service) sendASRStart(conn *gorillawebsocket.Conn, taskID string) error {
-	payload := asrRunPayload{
-		Model:     s.cfg.ASR.Model,
-		Input:     map[string]any{},
-		Task:      constants.AudioASRTask,
-		TaskGroup: constants.AudioTaskGroup,
-		Function:  constants.AudioASRFunction,
-	}
-	payload.Parameters.SampleRate = s.cfg.ASR.SampleRate
-	payload.Parameters.Format = s.cfg.ASR.Format
-	payload.Parameters.TranscriptionEnabled = true
+func (s *service) asrSender(ctx context.Context, pcmData []byte, ws *websocket.Conn, taskID string) error {
+	chunk := 3200
+	for i := 0; i < len(pcmData); i += chunk {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-	msg := wsEnvelope{
-		Header: wsHeader{
-			Streaming: constants.AudioStreamingDuplex,
-			TaskID:    taskID,
-			Action:    constants.AudioRunTaskAction,
+		end := min(i+chunk, len(pcmData))
+		if err := ws.WriteMessage(websocket.BinaryMessage, pcmData[i:end]); err != nil {
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return ws.WriteJSON(map[string]any{
+		"header": map[string]any{
+			"action":    "finish-task",
+			"task_id":   taskID,
+			"streaming": "duplex",
 		},
-		Payload: payload,
-	}
-	return writeWSJSON(conn, msg)
+		"payload": map[string]any{
+			"input": map[string]any{},
+		},
+	})
 }
 
-func waitForTaskStarted(ctx context.Context, conn *gorillawebsocket.Conn) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		var msg asrEventMessage
-		if err := readWSJSON(conn, &msg); err != nil {
-			return err
-		}
-		switch msg.Header.Event {
-		case constants.AudioTaskStartedEvent:
-			return nil
-		case constants.AudioTaskFailedEvent:
-			return errors.New("asr task failed")
-		}
-	}
-}
-
-func sendASRAudio(ctx context.Context, conn *gorillawebsocket.Conn, pcmData []byte) error {
-	for i := 0; i < len(pcmData); i += constants.ASRChunkSize {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		end := min(i+constants.ASRChunkSize, len(pcmData))
-
-		if err := writeWSBinary(conn, pcmData[i:end]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func receiveASRText(ctx context.Context, conn *gorillawebsocket.Conn) (string, error) {
-	var builder strings.Builder
+func (s *service) asrReceiver(ctx context.Context, ws *websocket.Conn) (string, error) {
+	text := ""
 
 	for {
 		select {
@@ -111,40 +59,114 @@ func receiveASRText(ctx context.Context, conn *gorillawebsocket.Conn) (string, e
 		default:
 		}
 
-		raw, err := readWSMessage(conn)
+		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			return "", err
 		}
 
-		var msg asrEventMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			continue
+		var data map[string]any
+		if err := json.Unmarshal(msg, &data); err != nil {
+			return "", err
 		}
 
-		switch msg.Header.Event {
-		case constants.AudioResultEvent:
-			transcription := msg.Payload.Output.Transcription
-			if transcription != nil && transcription.SentenceEnd {
-				builder.WriteString(transcription.Text)
+		header, _ := data["header"].(map[string]any)
+		event, _ := header["event"].(string)
+		if event == "result-generated" {
+			payload, _ := data["payload"].(map[string]any)
+			output, _ := payload["output"].(map[string]any)
+			transcription, _ := output["transcription"].(map[string]any)
+			sentenceEnd, _ := transcription["sentence_end"].(bool)
+			if transcription != nil && sentenceEnd {
+				transcriptionText, _ := transcription["text"].(string)
+				text += transcriptionText
 			}
-		case constants.AudioTaskFinishedEvent:
-			return builder.String(), nil
-		case constants.AudioTaskFailedEvent:
-			return "", errors.New("asr task failed")
+		} else if event == "task-finished" || event == "task-failed" {
+			break
 		}
 	}
+
+	return text, nil
 }
 
-func (s *service) sendASRFinish(conn *gorillawebsocket.Conn, taskID string) error {
-	msg := wsEnvelope{
-		Header: wsHeader{
-			Action:    constants.AudioFinishTaskAction,
-			TaskID:    taskID,
-			Streaming: constants.AudioStreamingDuplex,
-		},
-		Payload: map[string]any{
-			"input": map[string]any{},
-		},
+func (s *service) runASRTasks(ctx context.Context, pcmData []byte) (string, error) {
+	taskID := strings.ReplaceAll(uuid.NewString(), "-", "")
+	apiKey := os.Getenv("API_KEY")
+	wssURL := os.Getenv("WSS_URL")
+	headers := http.Header{
+		"Authorization": []string{"Bearer " + apiKey},
 	}
-	return writeWSJSON(conn, msg)
+
+	ws, _, err := websocket.DefaultDialer.Dial(wssURL, headers)
+	if err != nil {
+		return "", err
+	}
+	defer ws.Close()
+
+	if err := ws.WriteJSON(map[string]any{
+		"header": map[string]any{
+			"streaming": "duplex",
+			"task_id":   taskID,
+			"action":    "run-task",
+		},
+		"payload": map[string]any{
+			"model": "gummy-realtime-v1",
+			"parameters": map[string]any{
+				"sample_rate":           16000,
+				"format":                "pcm",
+				"transcription_enabled": true,
+			},
+			"input":      map[string]any{},
+			"task":       "asr",
+			"task_group": "audio",
+			"function":   "recognition",
+		},
+	}); err != nil {
+		return "", err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			return "", err
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal(msg, &data); err != nil {
+			return "", err
+		}
+		header, _ := data["header"].(map[string]any)
+		event, _ := header["event"].(string)
+		if event == "task-started" {
+			break
+		}
+	}
+
+	var text string
+	var senderErr error
+	var receiverErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		senderErr = s.asrSender(ctx, pcmData, ws, taskID)
+	}()
+	go func() {
+		defer wg.Done()
+		text, receiverErr = s.asrReceiver(ctx, ws)
+	}()
+	wg.Wait()
+
+	if senderErr != nil {
+		return "", senderErr
+	}
+	if receiverErr != nil {
+		return "", receiverErr
+	}
+	return text, nil
 }

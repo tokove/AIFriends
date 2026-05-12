@@ -9,5 +9,5 @@ const (
 
 	// ttl
 	CharDetailCacheTTL = 10 * time.Minute
-	TTSAudioCacheTTL   = 7 * 24 * time.Hour
+	TTSAudioCacheTTL   = time.Hour
 )

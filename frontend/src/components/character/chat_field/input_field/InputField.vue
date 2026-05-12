@@ -3,6 +3,7 @@ import SendIcon from "@/components/character/icons/SendIcon.vue";
 import MicIcon from "@/components/character/icons/MicIcon.vue";
 import {ref, useTemplateRef} from "vue";
 import streamApi from "@/js/http/streamApi.js";
+import {claimPlayback, releasePlayback} from "@/js/audio/playbackCoordinator.js";
 
 const props = defineProps(['friendId', 'enableTts'])
 const emit = defineEmits(['pushBackMessage', 'addToLastMessage', 'bindLastAIMessageId', 'toggleVoice'])
@@ -10,8 +11,8 @@ const inputRef = useTemplateRef('input-ref')
 const message = ref('')
 let processId = 0
 let audioContext = null
-let audioWorkletNode = null
 let nextAudioTime = 0
+let aiAudioActive = false
 const pcmSampleRate = 24000
 
 function focus() {
@@ -19,12 +20,13 @@ function focus() {
 }
 
 function stopAudio() {
+  aiAudioActive = false
   if (audioContext) {
     audioContext.close().catch(() => {})
     audioContext = null
   }
-  audioWorkletNode = null
   nextAudioTime = 0
+  releasePlayback(stopAudio)
 }
 
 function decodeBase64PCM(base64) {
@@ -47,28 +49,14 @@ function ensureAudioContext() {
   }
   audioContext = new AudioContext({ sampleRate: pcmSampleRate })
   nextAudioTime = audioContext.currentTime
-  audioContext.audioWorklet.addModule('/pcm-player-worklet.js')
-      .then(() => {
-        if (!audioContext) return
-        audioWorkletNode = new AudioWorkletNode(audioContext, 'pcm-player')
-        audioWorkletNode.connect(audioContext.destination)
-      })
-      .catch(() => {
-        audioWorkletNode = null
-      })
 }
 
 function enqueuePCMChunk(base64) {
-  if (!base64) return
+  if (!base64 || !aiAudioActive) return
 
   ensureAudioContext()
   const samples = decodeBase64PCM(base64)
   if (!samples.length) return
-
-  if (audioWorkletNode) {
-    audioWorkletNode.port.postMessage({ type: 'pcm', samples: samples.buffer }, [samples.buffer])
-    return
-  }
 
   const buffer = audioContext.createBuffer(1, samples.length, pcmSampleRate)
   buffer.copyToChannel(samples, 0)
@@ -89,6 +77,8 @@ async function sendMessage(content, messageMeta = null) {
 
   stopAudio()
   if (props.enableTts) {
+    aiAudioActive = true
+    claimPlayback(stopAudio)
     ensureAudioContext()
   }
 
@@ -125,15 +115,15 @@ async function sendMessage(content, messageMeta = null) {
           return
         }
 
-        if (data.content) {
-          emit('addToLastMessage', data.content)
-        }
-
         if (data.message_id) {
           emit('bindLastAIMessageId', data.message_id)
         }
 
-        if (props.enableTts && data.audio) {
+        if (data.content) {
+          emit('addToLastMessage', data.content)
+        }
+
+        if (props.enableTts && aiAudioActive && data.audio) {
           enqueuePCMChunk(data.audio)
         }
       },
@@ -142,6 +132,10 @@ async function sendMessage(content, messageMeta = null) {
     })
   } catch (err) {
   } finally {
+    if (curId === processId) {
+      aiAudioActive = false
+      releasePlayback(stopAudio)
+    }
   }
 }
 

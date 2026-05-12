@@ -65,13 +65,15 @@ type AudioASRConfig struct {
 }
 
 type AudioTTSConfig struct {
-	Model      string
-	Voice      string  `mapstructure:"voice"`
-	Format     string  `mapstructure:"format"`
-	SampleRate int     `mapstructure:"sample_rate"`
-	Volume     int     `mapstructure:"volume"`
-	Rate       float64 `mapstructure:"rate"`
-	Pitch      float64 `mapstructure:"pitch"`
+	Model            string
+	Voice            string  `mapstructure:"voice"`
+	Format           string  `mapstructure:"format"`
+	SampleRate       int     `mapstructure:"sample_rate"`
+	StreamFormat     string  `mapstructure:"stream_format"`
+	StreamSampleRate int     `mapstructure:"stream_sample_rate"`
+	Volume           int     `mapstructure:"volume"`
+	Rate             float64 `mapstructure:"rate"`
+	Pitch            float64 `mapstructure:"pitch"`
 }
 
 type AudioConfig struct {
@@ -124,6 +126,12 @@ func LoadConfig(path string) *Config {
 	cfg.Audio.WSURL = os.Getenv("WSS_URL")
 	cfg.Audio.ASR.Model = os.Getenv("ASR_MODEL")
 	cfg.Audio.TTS.Model = os.Getenv("TTS_MODEL")
+	if cfg.Audio.TTS.StreamFormat == "" {
+		cfg.Audio.TTS.StreamFormat = cfg.Audio.TTS.Format
+	}
+	if cfg.Audio.TTS.StreamSampleRate == 0 {
+		cfg.Audio.TTS.StreamSampleRate = cfg.Audio.TTS.SampleRate
+	}
 
 	return cfg
 }

@@ -26,7 +26,6 @@ func NewService(cfg *config.AudioConfig) Service {
 	return &service{cfg: cfg}
 }
 
-// 连接 ws
 func (s *service) dial() (*websocket.Conn, error) {
 	wsURL, err := url.Parse(s.cfg.WSURL)
 	if err != nil {
@@ -47,7 +46,6 @@ func (s *service) dial() (*websocket.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return conn, nil
 }
 

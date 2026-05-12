@@ -16,6 +16,7 @@ type CharRepository interface {
 	GetList(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint, limit int) ([]*model.Character, error)
 	Delete(ctx context.Context, id uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
+	GetVoices(ctx context.Context) ([]*model.Voice, error)
 }
 
 type charRepository struct {
@@ -110,4 +111,12 @@ func (r *charRepository) HomeOrSearch(ctx context.Context, query string, cursorT
 	}
 
 	return chars, nil
+}
+
+func (r *charRepository) GetVoices(ctx context.Context) ([]*model.Voice, error) {
+	var voices []*model.Voice
+	if err := r.db.WithContext(ctx).Order("id ASC").Find(&voices).Error; err != nil {
+		return nil, err
+	}
+	return voices, nil
 }

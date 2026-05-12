@@ -25,6 +25,8 @@ audio:
     voice: "longanyang"
     format: "mp3"
     sample_rate: 22050
+    stream_format: "pcm"
+    stream_sample_rate: 24000
     volume: 40
     rate: 1.25
     pitch: 1

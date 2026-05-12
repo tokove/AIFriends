@@ -393,15 +393,6 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		close(eventCh)
 	}()
 
-	// 判断字符串转为 rune 的长度，根据 maxLen 截取
-	truncateString := func(str string, maxLen int) string {
-		runes := []rune(str)
-		if len(runes) > maxLen {
-			return string(runes[:maxLen])
-		}
-		return str
-	}
-
 	// 保存消息并检查是否更新记忆（当前按每 2 条触发一次）
 	saveAndUpdateMemory := func(isInterrupted bool, currentFinalOutput string, inTok, outTok, totTok int) uint {
 		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -409,9 +400,9 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 
 		msg := &model.Message{
 			FriendID:     req.FriendID,
-			UserMessage:  truncateString(req.Message, constants.MaxMsgLen),
+			UserMessage:  truncateUTF8(req.Message, constants.MaxMsgLen),
 			Input:        inputStr,
-			Output:       truncateString(currentFinalOutput, constants.MaxMsgLen),
+			Output:       truncateUTF8(currentFinalOutput, constants.MaxMsgLen),
 			InputTokens:  inTok,
 			OutputTokens: outTok,
 			TotalTokens:  totTok,
@@ -438,15 +429,21 @@ func (h *friendHandler) StreamChat(c *gin.Context) {
 		return msg.ID
 	}
 
+	var donePending bool
 	c.Stream(func(w io.Writer) bool {
+		if donePending {
+			c.SSEvent("message", "[DONE]")
+			return false
+		}
+
 		event, ok := <-eventCh
 		if !ok {
 			messageID := saveAndUpdateMemory(false, finalOutput, inputTokens, outputTokens, totalTokens)
 			if messageID > 0 {
 				c.SSEvent("message", gin.H{"message_id": messageID})
 			}
-			c.SSEvent("message", "[DONE]")
-			return false
+			donePending = true
+			return true
 		}
 
 		if event.Err != nil {

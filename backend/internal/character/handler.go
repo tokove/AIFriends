@@ -97,6 +97,19 @@ func (h *charHandler) CreateChar(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": "success"})
 }
 
+func (h *charHandler) GetVoices(c *gin.Context) {
+	voices, err := h.svc.GetVoices(c.Request.Context())
+	if err != nil {
+		c.JSON(charErrorStatus(err), gin.H{"result": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"result": "success",
+		"voices": voices,
+	})
+}
+
 func (h *charHandler) UpdateChar(c *gin.Context) {
 	uid, _ := c.Get("user_id")
 	userID, ok := uid.(uint)

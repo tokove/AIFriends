@@ -24,6 +24,7 @@ type CharService interface {
 	GetUserChars(ctx context.Context, authorID uint, cursorUpdatedAt *time.Time, cursorID uint) ([]*model.Character, error)
 	DeleteChar(ctx context.Context, authorID, charID uint) error
 	HomeOrSearch(ctx context.Context, query string, cursorTime int64, cursorID uint, limit int) ([]*model.Character, error)
+	GetVoices(ctx context.Context) ([]VoiceResp, error)
 }
 
 type charService struct {
@@ -258,4 +259,25 @@ func (s *charService) HomeOrSearch(ctx context.Context, query string, cursorTime
 		return nil, err
 	}
 	return chars, nil
+}
+
+func (s *charService) GetVoices(ctx context.Context) ([]VoiceResp, error) {
+	voices, err := s.repo.GetVoices(ctx)
+	if err != nil {
+		zap.L().Error("[char service] GetVoices db error", zap.Error(err))
+		return nil, errors.New("系统繁忙，请稍后再试")
+	}
+
+	resp := make([]VoiceResp, 0, len(voices))
+	for _, voice := range voices {
+		if voice == nil {
+			continue
+		}
+		resp = append(resp, VoiceResp{
+			ID:      voice.ID,
+			Name:    voice.Name,
+			VoiceID: voice.VoiceID,
+		})
+	}
+	return resp, nil
 }

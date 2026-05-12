@@ -2,6 +2,7 @@
 import {computed, onBeforeUnmount, ref} from "vue";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
+import {claimPlayback, releasePlayback} from "@/js/audio/playbackCoordinator.js";
 
 const props = defineProps(['message', 'character', 'friendId'])
 const user = useUserStore()
@@ -22,16 +23,19 @@ function playUserAudio() {
     stopAudio()
     return
   }
+  claimPlayback(stopAudio)
   currentAudio = new Audio(props.message.audioUrl)
   currentAudio.onended = () => {
-    isPlaying.value = false
+    stopAudio()
   }
   currentAudio.onpause = () => {
-    isPlaying.value = false
+    if (currentAudio) {
+      isPlaying.value = false
+    }
   }
   isPlaying.value = true
   currentAudio.play().catch(() => {
-    isPlaying.value = false
+    stopAudio()
   })
 }
 
@@ -47,6 +51,7 @@ function stopAudio() {
     currentAudioUrl = ''
   }
   isPlaying.value = false
+  releasePlayback(stopAudio)
 }
 
 async function playAIAudio() {
@@ -59,6 +64,7 @@ async function playAIAudio() {
   const requestId = playbackRequestId + 1
   playbackRequestId = requestId
   isPlaying.value = true
+  claimPlayback(stopAudio)
   try {
     const res = await api.post('/api/friend/message/tts', {
       friend_id: props.friendId,
@@ -86,7 +92,7 @@ async function playAIAudio() {
     await audio.play()
   } catch {
     if (requestId === playbackRequestId) {
-      isPlaying.value = false
+      stopAudio()
     }
   }
 }

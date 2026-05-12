@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -173,7 +174,7 @@ func (s *friendService) TTS(ctx context.Context, friendID, messageID, userID uin
 	}
 
 	cacheKey := fmt.Sprintf("%s%d", constants.CacheKeyTTSMessage, messageID)
-	if data, cacheErr := s.cache.Get(ctx, cacheKey); cacheErr == nil {
+	if data, err := s.cache.Get(ctx, cacheKey); err == nil {
 		relPath := strings.TrimSpace(string(data))
 		if utils.FileExists(relPath) {
 			return utils.ReadFileBytes(relPath)
@@ -317,9 +318,7 @@ func (s *friendService) StreamChat(
 		return nil, "", errors.New("系统繁忙，请稍后再试")
 	}
 	inputStr := string(inputBytes)
-	if len(inputStr) > constants.MaxDBInputLength { // 截断防爆
-		inputStr = inputStr[:constants.MaxDBInputLength]
-	}
+	inputStr = truncateUTF8(inputStr, constants.MaxDBInputLength)
 
 	state := graph.ChatState{
 		Messages: messages,
@@ -331,6 +330,30 @@ func (s *friendService) StreamChat(
 	}
 
 	return stream, inputStr, err
+}
+
+func truncateUTF8(str string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if len(str) <= maxLen && utf8.ValidString(str) {
+		return str
+	}
+
+	result := make([]byte, 0, min(len(str), maxLen))
+	for len(str) > 0 {
+		r, size := utf8.DecodeRuneInString(str)
+		if r == utf8.RuneError && size == 1 {
+			str = str[size:]
+			continue
+		}
+		if len(result)+size > maxLen {
+			break
+		}
+		result = append(result, str[:size]...)
+		str = str[size:]
+	}
+	return string(result)
 }
 
 func (s *friendService) UpdateMemory(ctx context.Context, friendID uint) error {

@@ -4,13 +4,12 @@ import Profile from "@/views/create/character/components/Profile.vue";
 import Name from "@/views/create/character/components/Name.vue";
 import Photo from "@/views/create/character/components/Photo.vue";
 import Voice from "@/views/create/character/components/Voice.vue";
-import {ref, useTemplateRef} from "vue";
+import {onMounted, ref, useTemplateRef} from "vue";
 import {base64ToFile} from "@/js/utils/base64_to_file.js";
 import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 import {useRouter} from "vue-router";
 import {validateCharacterName, validateCharacterProfile} from "@/js/utils/validators.js";
-import voices from "@/js/config/voices.js";
 
 const photoRef = useTemplateRef('photo-ref')
 const nameRef = useTemplateRef('name-ref')
@@ -18,9 +17,24 @@ const voiceRef = useTemplateRef('voice-ref')
 const profileRef = useTemplateRef('profile-ref')
 const backgroundImageRef = useTemplateRef('background-image-ref')
 const errorMessage= ref('')
+const voices = ref([])
 
 const user = useUserStore()
 const router = useRouter()
+
+onMounted(async () => {
+  try {
+    const res = await api.get('/api/create/character/voices')
+    const data = res.data
+    if (data.result === 'success') {
+      voices.value = data.voices || []
+    } else {
+      errorMessage.value = data.result
+    }
+  } catch (err) {
+    errorMessage.value = '请求失败，请稍后再试'
+  }
+})
 
 async function handleCreate() {
   errorMessage.value = ''

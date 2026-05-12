@@ -4,6 +4,7 @@ import InputField from "@/components/character/chat_field/input_field/InputField
 import MicroPhone from "@/components/character/chat_field/input_field/MicroPhone.vue";
 import CharacterPhotoField from "@/components/character/chat_field/character_photo_field/CharacterPhotoField.vue";
 import ChatHistory from "@/components/character/chat_field/chat_history/ChatHistory.vue";
+import {stopPlayback} from "@/js/audio/playbackCoordinator.js";
 
 const props = defineProps(['friend'])
 const modalRef = useTemplateRef('modal-ref')
@@ -22,6 +23,7 @@ async function showModal() {
 }
 
 function handleClose() {
+  stopPlayback()
   inputRef.value.close()
   if (lastScrollTask) {
     clearTimeout(lastScrollTask)
@@ -58,11 +60,15 @@ function handlePushFrontMessage(msg) {
 }
 
 function handleToggleVoice() {
+  stopPlayback()
+  inputRef.value?.close()
+  chatHistoryRef.value?.stopAudio()
   isVoiceMode.value = !isVoiceMode.value
 }
 
 function toggleTts() {
   enableTts.value = !enableTts.value
+  stopPlayback()
   inputRef.value?.close()
 }
 

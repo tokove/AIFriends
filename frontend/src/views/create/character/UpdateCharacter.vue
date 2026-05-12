@@ -10,7 +10,6 @@ import api from "@/js/http/api.js";
 import {useUserStore} from "@/stores/user.js";
 import {useRoute, useRouter} from "vue-router";
 import {validateCharacterName, validateCharacterProfile} from "@/js/utils/validators.js";
-import voices from "@/js/config/voices.js";
 
 const photoRef = useTemplateRef('photo-ref')
 const nameRef = useTemplateRef('name-ref')
@@ -18,6 +17,7 @@ const voiceRef = useTemplateRef('voice-ref')
 const profileRef = useTemplateRef('profile-ref')
 const backgroundImageRef = useTemplateRef('background-image-ref')
 const errorMessage= ref('')
+const voices = ref([])
 
 const user = useUserStore()
 const router = useRouter()
@@ -27,6 +27,15 @@ const character = ref(null)
 
 onMounted(async () => {
   try {
+    const voiceRes = await api.get('/api/create/character/voices')
+    const voiceData = voiceRes.data
+    if (voiceData.result === 'success') {
+      voices.value = voiceData.voices || []
+    } else {
+      errorMessage.value = voiceData.result
+      return
+    }
+
     const res = await api.get('/api/create/character/get_single', {
       params: {
         character_id: characterId,

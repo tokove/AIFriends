@@ -4,6 +4,13 @@ type DeleteCharReq struct {
 	CharID uint `json:"character_id" binding:"required"`
 }
 
+type VoiceResp struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	VoiceID   string `json:"voice_id"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type GetSingleResp struct {
 	ID              uint   `json:"id"`
 	Name            string `json:"name"`
