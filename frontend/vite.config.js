@@ -11,7 +11,9 @@ export default defineConfig({
   plugins: [
     vue(),
     vueDevTools(),
-    tailwindcss(),
+    tailwindcss({
+      optimize: false,
+    }),
   ],
   server: {
     proxy: {
@@ -24,6 +26,32 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../backend/static/frontend'), // 打包到 Django static
     emptyOutDir: true,
+    cssMinify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+            return 'vue-vendor'
+          }
+
+          if (id.includes('markdown-it') || id.includes('highlight.js')) {
+            return 'markdown-vendor'
+          }
+
+          if (id.includes('@ricky0123/vad-web') || id.includes('onnxruntime-web')) {
+            return 'audio-vendor'
+          }
+
+          if (id.includes('croppie')) {
+            return 'image-vendor'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
   },
   resolve: {
     alias: {
