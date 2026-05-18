@@ -1,0 +1,110 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      CONFIG_PATH: /app/configs/docker.yaml
+    configs:
+      - source: app_config
+        target: /app/configs/docker.yaml
+    volumes:
+      - app_media:/app/media
+      - app_log:/app/log
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-aifriends}
+      POSTGRES_USER: ${DB_USER:-aifriends}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-aifriends}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:5.0.7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+configs:
+  app_config:
+    content: |
+      server:
+        port: 8080
+        mode: "release"
+
+      db:
+        driver: "postgres"
+        host: "postgres"
+        port: 5432
+        name: "aifriends"
+        sslmode: "disable"
+        time_zone: "Asia/Shanghai"
+
+      redis:
+        host: "redis"
+        port: 6379
+        password: ""
+        db: 0
+        pool_size: 100
+
+      audio:
+        asr:
+          sample_rate: 16000
+          format: "pcm"
+        tts:
+          voice: "longanyang"
+          format: "mp3"
+          sample_rate: 22050
+          stream_format: "pcm"
+          stream_sample_rate: 24000
+          volume: 40
+          rate: 1.25
+          pitch: 1
+
+      log:
+        level: "debug"
+        filename: "./log/aifriends.log"
+        max_size: 200
+        max_age: 30
+        max_backups: 7
+
+      jwt:
+        access_exp: 7200
+        refresh_exp: 604800
+
+      cors:
+        allow_origins:
+          - "http://localhost:8080"
+          - "http://127.0.0.1:8080"
+        allow_credentials: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_media:
+  app_log:
