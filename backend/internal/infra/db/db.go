@@ -4,6 +4,8 @@ import (
 	"backend/internal/config"
 	"backend/internal/model"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -59,25 +61,31 @@ func AutoMigrate() {
 	); err != nil {
 		zap.L().Fatal("failed to automigrate", zap.Error(err))
 	}
-
-	seedVoices()
 }
 
-func seedVoices() {
-	voices := []model.Voice{
-		// 男声
-		{Name: "干净清爽男", VoiceID: "longanshuo"},
-		{Name: "睿智轻熟男", VoiceID: "longanzhi"},
-		{Name: "磁性低音男", VoiceID: "longxiaocheng_v2"},
-		// 女声
-		{Name: "温婉邻家女", VoiceID: "longxing_v2"},
-		{Name: "甜美娇气女", VoiceID: "longfeifei_v2"},
-		{Name: "温暖春风女", VoiceID: "longyan_v2"},
+func RunSeedSQL(dir string) {
+	files := []string{
+		dir + "/voice.sql",
+		dir + "/system_prompt.sql",
 	}
 
-	for _, voice := range voices {
-		if err := DB.FirstOrCreate(&voice, model.Voice{VoiceID: voice.VoiceID}).Error; err != nil {
-			zap.L().Fatal("failed to seed voices", zap.Error(err))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			zap.L().Fatal("read seed file failed", zap.Error(err))
+		}
+
+		sqls := strings.Split(string(b), ";")
+
+		for _, s := range sqls {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+
+			if err := DB.Exec(s).Error; err != nil {
+				zap.L().Fatal("exec seed failed", zap.Error(err), zap.String("sql", s))
+			}
 		}
 	}
 }

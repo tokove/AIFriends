@@ -17,6 +17,7 @@ const (
 
 	// 默认路径
 	DefaultPath                 = "./configs/config.yaml"
+	DefaultSeedDir              = "internal/sql/seed"
 	DefaultUserPhoto            = "user/photos/default.jpg"
 	DirUserPhoto                = "user/photos"
 	DirCharacterPhoto           = "character/photos"

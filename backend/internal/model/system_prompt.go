@@ -8,7 +8,7 @@ import (
 
 type SystemPrompt struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
-	Title       string         `gorm:"type:varchar(100);not null" json:"title"`
+	Title       string         `gorm:"type:varchar(100);not null;uniqueIndex" json:"title"`
 	OrderNumber int            `gorm:"default:0" json:"order_number"`
 	Prompt      string         `gorm:"type:text;not null" json:"prompt"`
 	CreatedAt   time.Time      `json:"created_at"`

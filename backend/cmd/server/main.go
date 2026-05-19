@@ -27,6 +27,7 @@ func main() {
 	// init db
 	db.InitDB(cfg)
 	db.AutoMigrate()
+	db.RunSeedSQL(constants.DefaultSeedDir)
 
 	// init redis
 	redis.InitRedis(cfg)
